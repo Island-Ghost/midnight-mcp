@@ -37,6 +37,9 @@ jest.mock('../../../src/logger/index.js', () => ({
   }))
 }));
 
+// Mock setTimeout
+jest.useFakeTimers();
+
 describe('MCPServer', () => {
   let mcpServer: MCPServer;
   
@@ -98,6 +101,22 @@ describe('MCPServer', () => {
         expect(error.type).toBe(MCPErrorType.WALLET_NOT_READY);
       }
     });
+
+    it('should throw an error when the wallet getAddress function fails', () => {
+      // Mock an error in the wallet's getAddress method
+      mockWalletData.getAddress.mockImplementation(() => {
+        throw new Error('Access error');
+      });
+      
+      try {
+        mcpServer.getAddress();
+        fail('Expected an error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(MCPError);
+        expect(error.type).toBe(MCPErrorType.WALLET_NOT_READY);
+        expect(error.message).toBe('Error accessing wallet address');
+      }
+    });
   });
   
   describe('getBalance', () => {
@@ -116,6 +135,22 @@ describe('MCPServer', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(MCPError);
         expect(error.type).toBe(MCPErrorType.WALLET_NOT_READY);
+      }
+    });
+
+    it('should throw an error when the wallet getBalance function fails', () => {
+      // Mock an error in the wallet's getBalance method
+      mockWalletData.getBalance.mockImplementation(() => {
+        throw new Error('Access error');
+      });
+      
+      try {
+        mcpServer.getBalance();
+        fail('Expected an error to be thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(MCPError);
+        expect(error.type).toBe(MCPErrorType.WALLET_NOT_READY);
+        expect(error.message).toBe('Error accessing wallet balance');
       }
     });
   });
@@ -171,6 +206,22 @@ describe('MCPServer', () => {
         expect(error).toBeInstanceOf(MCPError);
         expect(error.type).toBe(MCPErrorType.TX_SUBMISSION_FAILED);
       }
+    });
+
+    it('should update transaction status after a timeout', async () => {
+      const result = await mcpServer.sendFunds('mdnt1recipient_address', BigInt(100));
+      expect(result.txHash).toBe('mock_tx_hash');
+      
+      // Verify initial transaction status is 'pending'
+      const statusBefore = mcpServer.validateTx('mock_tx_hash');
+      expect(statusBefore.status).toBe('pending');
+      
+      // Fast forward time to trigger the timeout
+      jest.advanceTimersByTime(5000);
+      
+      // Verify status changed to 'confirmed'
+      const statusAfter = mcpServer.validateTx('mock_tx_hash');
+      expect(statusAfter.status).toBe('confirmed');
     });
   });
   
@@ -249,6 +300,59 @@ describe('MCPServer', () => {
         expect(error).toBeInstanceOf(MCPError);
         expect(error.type).toBe(MCPErrorType.IDENTIFIER_VERIFICATION_FAILED);
       }
+    });
+  });
+
+  describe('close', () => {
+    it('should close the wallet successfully', async () => {
+      await mcpServer.close();
+      expect(mockWalletData.close).toHaveBeenCalled();
+    });
+
+    it('should handle errors during wallet closing', async () => {
+      // Mock an error during close
+      mockWalletData.close.mockRejectedValue(new Error('Close error'));
+      
+      // The close method catches errors, so it should not throw
+      await expect(mcpServer.close()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('constructor', () => {
+    it('should set network ID if provided', () => {
+      // Create a new instance with a specific network ID
+      const testServer = new MCPServer(
+        NetworkId.MainNet,
+        'seed phrase for testing',
+        'test-wallet.json'
+      );
+      
+      // We can't directly test the internal network ID set, but we can verify the constructor completed
+      expect(testServer).toBeInstanceOf(MCPServer);
+      
+      // Clean up
+      testServer.close();
+    });
+
+    it('should initialize with external config if provided', () => {
+      const externalConfig = {
+        indexer: 'https://test-indexer.com',
+        indexerWS: 'wss://test-indexer-ws.com',
+        node: 'https://test-node.com',
+        proofServer: 'https://test-proof-server.com'
+      };
+
+      const testServer = new MCPServer(
+        NetworkId.Undeployed,
+        'seed phrase for testing',
+        'test-wallet.json',
+        externalConfig
+      );
+      
+      expect(testServer).toBeInstanceOf(MCPServer);
+      
+      // Clean up
+      testServer.close();
     });
   });
 }); 

@@ -4,9 +4,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 // Calculate root directory path for finding .env file
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '..');
+// Use let for compatibility with testing environments
+let rootDir;
+
+try {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  rootDir = path.resolve(__dirname, '..');
+} catch (err) {
+  // Fallback for test environments that might not support import.meta.url
+  rootDir = process.cwd();
+}
 
 // Load environment variables from .env file if present
 // In production, these will be provided by Docker or the host environment
