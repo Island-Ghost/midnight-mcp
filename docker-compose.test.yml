@@ -1,60 +1,55 @@
 version: '3.8'
 
 services:
-  # Mock Midnight node for testing - assuming it exposes the necessary APIs
-  midnight-node:
-    image: midnight/node:test
-    ports:
-      - "9944:9944"  # Network API port
-    environment:
-      - NODE_ENV=test
-      - LOG_LEVEL=info
-    volumes:
-      - midnight-node-data:/data
-    networks:
-      - test-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9944/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Mock Proof server for testing
   proof-server:
-    image: midnight/proof-server:test
+    container_name: 'proof-server'
+    image: 'midnightnetwork/proof-server:3.0.7'
     ports:
-      - "6300:6300"  # Proof server port
+      - "6300:6300"
     environment:
-      - NODE_ENV=test
-      - LOG_LEVEL=info
-      - API_KEY=test-api-key
-    depends_on:
-      - midnight-node
+      RUST_BACKTRACE: "full"
     networks:
-      - test-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6300/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      
-  # Mock Indexer for testing
+      - midnight-network
+
   indexer:
-    image: midnight/indexer:test
+    container_name: 'indexer'
+    image: 'midnightnetwork/midnight-pubsub-indexer:2.3.0'
+    platform: linux/amd64
     ports:
-      - "8088:8088"  # Indexer port
+      - '8088:8088'
+    command: ['-Dlogback.configurationFile=logback-json-file.xml']
     environment:
-      - NODE_ENV=test
-      - LOG_LEVEL=info
-    depends_on:
-      - midnight-node
-    networks:
-      - test-network
+      LOG_LEVEL: 'TRACE'
+      LEDGER_NETWORK_ID: 'Undeployed'
+      SUBSTRATE_NODE_WS_URL: 'ws://node:9944'
+      OTEL_JAVAAGENT_ENABLED: 'false'
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
-      interval: 10s
+      test: ['CMD', 'egrep', '"Block .* was stored at height 0"', '/tmp/app_logs/server.log']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      node:
+        condition: service_started
+    networks:
+      - midnight-network
+
+  node:
+    image: 'midnightnetwork/midnight-node:0.8.0'
+    platform: linux/amd64
+    container_name: 'node'
+    ports:
+      - "9944:9944"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9944/health" ]
+      interval: 2s
       timeout: 5s
       retries: 5
+      start_period: 40s
+    environment:
+      CFG_PRESET: "dev"
+    networks:
+      - midnight-network
 
   # MCP integration tests
   integration-tests:
