@@ -548,7 +548,6 @@ export class WalletManager {
    * @throws Error if wallet is not ready
    */
   public getAddress(): string {
-    if (!this.ready) throw new Error('Wallet not ready');
     return this.walletAddress;
   }
   

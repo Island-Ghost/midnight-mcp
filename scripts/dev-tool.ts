@@ -4,6 +4,10 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 import fetch, { RequestInit } from 'node-fetch';
 
+// envs
+import dotenv from 'dotenv';
+dotenv.config();
+
 // Default server URL
 const DEFAULT_SERVER_URL = 'http://localhost:3000';
 
@@ -67,6 +71,7 @@ async function fetchWithErrorHandling(endpoint: string, options: RequestInit = {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'x-api-key': process.env.API_KEY || '',
         ...(options.headers || {})
       }
     });
@@ -101,7 +106,8 @@ async function checkServerStatus() {
  */
 async function getAddress() {
   try {
-    const { address } = await fetchWithErrorHandling('/address');
+    const response = await fetchWithErrorHandling('/address');
+    const { address } = response as { address: string };
     console.log(chalk.green('Wallet address:'), address);
   } catch (error) {
     console.error(chalk.red('Error getting address:'), error);
@@ -113,7 +119,8 @@ async function getAddress() {
  */
 async function getBalance() {
   try {
-    const { balance } = await fetchWithErrorHandling('/balance');
+    const response = await fetchWithErrorHandling('/balance');
+    const { balance } = response as { balance: number | string };
     console.log(chalk.green('Wallet balance:'), balance);
   } catch (error) {
     console.error(chalk.red('Error getting balance:'), error);

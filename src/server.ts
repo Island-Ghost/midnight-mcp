@@ -5,6 +5,7 @@ import { WalletConfig } from './wallet/index.js';
 import express from 'express';
 import cors from 'cors';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import crypto from 'crypto';
 
 // Configure global logging settings based on environment
 configureGlobalLogging({
@@ -41,6 +42,26 @@ configureGlobalLogging({
 
 // Define the port for the server
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// API Authentication configuration
+const API_KEY = process.env.API_KEY || (process.env.NODE_ENV !== 'production' ? 'dev-midnight-api-key' : undefined);
+
+// Log API key status
+if (API_KEY) {
+  // Mask key in logs for security
+  const maskedKey = API_KEY.length > 8 
+    ? `${API_KEY.substring(0, 4)}...${API_KEY.substring(API_KEY.length - 4)}`
+    : '********';
+  
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info(`Using development API key: ${API_KEY}`);
+  } else {
+    logger.info(`API authentication enabled with key: ${maskedKey}`);
+  }
+} else {
+  logger.info('API authentication disabled');
+  throw new Error('No API_KEY defined. Authentication is mandatory.');
+}
 
 /**
  * Implementation showing how to use the MCPServer with MCP SDK
@@ -109,6 +130,54 @@ async function main() {
     app.use(cors());
     app.use(express.json());
     
+    // Authentication middleware
+    const authenticateApiKey = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // Skip authentication if no API key is configured or for public endpoints
+      const isPublicEndpoint = req.path === '/' || req.path === '/status';
+      if (isPublicEndpoint || !API_KEY) {
+        return next();
+      }
+      
+      // Get API key from header or query parameter
+      let apiKey: string | undefined;
+      
+      // Try to get API key from header
+      const apiKeyHeader = req.headers['x-api-key'];
+      if (typeof apiKeyHeader === 'string') {
+        apiKey = apiKeyHeader;
+      }
+      
+      // If no API key in header, try query parameter
+      if (!apiKey && req.query.api_key) {
+        const queryApiKey = req.query.api_key;
+        if (typeof queryApiKey === 'string') {
+          apiKey = queryApiKey;
+        }
+      }
+      
+      // Check if API key is valid (matches configured key)
+      if (!apiKey || apiKey !== API_KEY) {
+        logger.warn(`Authentication failed for ${req.path}`, { 
+          ip: req.ip, 
+          userAgent: req.headers['user-agent'],
+          apiKey: apiKey ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : 'missing'
+        });
+        
+        res.status(401).json({ 
+          error: 'Unauthorized', 
+          message: 'Valid API key is required' 
+        });
+        return;
+      }
+      
+      // Log successful authentication
+      logger.debug(`Authenticated request to ${req.path} with API key`);
+      next();
+    };
+    
+    // Add authentication middleware
+    app.use(authenticateApiKey);
+    
     // Create a middleware to check if wallet is ready
     const checkWalletReady = (req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (!mcpServer.isReady()) {
@@ -140,9 +209,10 @@ async function main() {
       });
     });
     
-    // Get wallet address
-    app.get('/address', checkWalletReady, (req, res) => {
+    // Get wallet address - available even if wallet is not fully synced
+    app.get('/address', (req, res) => {
       try {
+        // Access the wallet address directly if the wallet is not yet ready
         const address = mcpServer.getAddress();
         res.json({ address });
       } catch (error) {
@@ -154,7 +224,23 @@ async function main() {
       }
     });
     
-    // Get wallet balance
+    // In development, show the current API key
+    if (process.env.NODE_ENV !== 'production') {
+      app.get('/admin/api-key', (req, res) => {
+        try {
+          const maskedKey = API_KEY ? `${API_KEY.substring(0, 4)}...${API_KEY.substring(API_KEY.length - 4)}` : 'Not configured';
+          res.json({ 
+            apiKey: maskedKey,
+            note: 'For security reasons, only a masked version is shown. The full key is available in your server logs at startup.'
+          });
+        } catch (error) {
+          logger.error('Error retrieving API key info', error);
+          res.status(500).json({ error: 'Failed to retrieve API key info' });
+        }
+      });
+    }
+    
+    // Get wallet balance - requires wallet to be synced
     app.get('/balance', checkWalletReady, (req, res) => {
       try {
         const balance = mcpServer.getBalance();
@@ -168,7 +254,7 @@ async function main() {
       }
     });
     
-    // Send funds
+    // Send funds - requires wallet to be synced
     app.post('/send', checkWalletReady, async (req, res) => {
       try {
         const { destinationAddress, amount } = req.body;
@@ -185,6 +271,14 @@ async function main() {
         const amountBigInt = BigInt(amount);
         
         const result = await mcpServer.sendFunds(destinationAddress, amountBigInt);
+        
+        // Log transaction details securely (no sensitive data)
+        logger.info(`Funds sent to address (masked): ${destinationAddress.substring(0, 10)}...`, {
+          amount: amount.toString(),
+          txHash: result.txHash,
+          authenticated: true
+        });
+        
         res.json(result);
       } catch (error) {
         logger.error('Error sending funds', error);
@@ -203,7 +297,7 @@ async function main() {
       }
     });
     
-    // Check transaction by identifier
+    // Check transaction by identifier - requires wallet to be synced
     app.get('/tx/identifier/:identifier', checkWalletReady, (req, res) => {
       try {
         const { identifier } = req.params;
