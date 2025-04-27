@@ -24,7 +24,16 @@ export class MCPError extends Error {
   }
 }
 
-export type TransactionStatus = 'pending' | 'confirmed' | 'failed';
+/**
+ * Result interface for send funds operation
+ */
+interface SendFundsResult {
+  txHash: string;
+  syncedIndices: bigint;
+  totalIndices: bigint;
+  isFullySynced: boolean;
+  amountBigInt: bigint;
+}
 
 /**
  * MCP Server that provides a secure interface to interact with the Midnight blockchain
@@ -33,7 +42,6 @@ export type TransactionStatus = 'pending' | 'confirmed' | 'failed';
 export class MCPServer {
   private wallet: WalletManager;
   private logger: Logger;
-  private transactions: Map<string, { status: TransactionStatus; to: string; amount: bigint }>;
   
   /**
    * Create a new MCP Server instance
@@ -54,7 +62,6 @@ export class MCPServer {
     
     // Initialize WalletManager with network ID, seed, filename, and optional external config
     this.wallet = new WalletManager(networkId, seed, walletFilename, externalConfig);
-    this.transactions = new Map();
     
     this.logger.info('MCP Server initialized, wallet synchronization started in background');
   }
@@ -74,10 +81,6 @@ export class MCPServer {
    * @throws MCPError if wallet is not ready
    */
   public getAddress(): string {
-    if (!this.isReady()) {
-      throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
-    }
-    
     try {
       return this.wallet.getAddress();
     } catch (error) {
@@ -107,11 +110,11 @@ export class MCPServer {
   /**
    * Send funds to the specified destination address
    * @param destinationAddress Address to send the funds to
-   * @param amount Amount of funds to send
+   * @param amount Amount of funds to send as a string (decimal value)
    * @returns Transaction hash and sync status
    * @throws MCPError if wallet is not ready, has insufficient funds, or transaction fails
    */
-  public async sendFunds(destinationAddress: string, amount: bigint): Promise<{ 
+  public async sendFunds(destinationAddress: string, amount: string): Promise<{ 
     txHash: string;
     syncStatus: {
       syncedIndices: bigint;
@@ -123,29 +126,8 @@ export class MCPServer {
       throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
     }
     
-    if (this.wallet.getBalance() < amount) {
-      throw new MCPError(MCPErrorType.INSUFFICIENT_FUNDS, 'Insufficient funds for transaction');
-    }
-    
     try {
       const result = await this.wallet.sendFunds(destinationAddress, amount);
-      
-      // Store transaction for later validation
-      this.transactions.set(result.txHash, {
-        status: 'pending',
-        to: destinationAddress,
-        amount
-      });
-      
-      // Simulate transaction confirmation after a delay
-      setTimeout(() => {
-        const tx = this.transactions.get(result.txHash);
-        if (tx) {
-          tx.status = 'confirmed';
-          this.transactions.set(result.txHash, tx);
-          this.logger.info(`Transaction ${result.txHash} confirmed`);
-        }
-      }, 5000);
       
       return { 
         txHash: result.txHash,

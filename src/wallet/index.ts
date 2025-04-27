@@ -13,6 +13,7 @@ import { WalletBuilder } from '@midnight-ntwrk/wallet';
 import { type Wallet } from '@midnight-ntwrk/wallet-api';
 import { type Resource } from '@midnight-ntwrk/wallet';
 import { config } from '../config.js';
+import { convertDecimalToBigInt } from './utils.js';
 
 // Set up crypto for Scala.js
 // @ts-expect-error: It's needed to make Scala.js and WASM code able to use cryptography
@@ -564,24 +565,33 @@ export class WalletManager {
   /**
    * Send funds to the specified destination address
    * @param to Address to send the funds to
-   * @param amount Amount of funds to send
+   * @param amount Amount of funds to send (as a string with decimal value)
    * @returns Transaction result with hash and sync status
    * @throws Error if wallet is not ready
    */
-  public async sendFunds(to: string, amount: bigint): Promise<{
+  public async sendFunds(to: string, amount: string): Promise<{
     txHash: string;
     syncedIndices: bigint;
     totalIndices: bigint;
     isFullySynced: boolean;
+    amountBigInt: bigint;
   }> {
     if (!this.ready) throw new Error('Wallet not ready');
     if (!this.wallet) throw new Error('Wallet instance not available');
     
     try {
+      // Convert decimal amount string to BigInt (multiply by 1,000,000 to handle up to 6 decimal places)
+      const amountBigInt = convertDecimalToBigInt(amount);
+      
+      // Check if wallet has sufficient funds
+      if (this.walletBalance < amountBigInt) {
+        throw new Error('Insufficient funds for transaction');
+      }
+      
       // Create a transfer transaction
       const transferRecipe = await this.wallet.transferTransaction([
         {
-          amount: amount,
+          amount: amountBigInt,
           type: nativeToken(),
           receiverAddress: to
         }
@@ -597,7 +607,8 @@ export class WalletManager {
         txHash: submittedTransaction,
         syncedIndices: this.syncedIndices,
         totalIndices: this.totalIndices,
-        isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
+        isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices,
+        amountBigInt
       };
     } catch (error) {
       this.logger.error('Failed to send funds', error);

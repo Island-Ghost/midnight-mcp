@@ -267,14 +267,32 @@ async function main() {
           return;
         }
         
-        // Convert amount to BigInt (client might send as string or number)
-        const amountBigInt = BigInt(amount);
-        
-        const result = await mcpServer.sendFunds(destinationAddress, amountBigInt);
+        // Validate amount
+        // Must be a string representing a decimal value with up to 6 decimal places
+        if (typeof amount !== 'string') {
+          res.status(400).json({
+            error: 'Invalid amount format',
+            message: 'Amount must be provided as a string'
+          });
+          return;
+        }
+
+        // Check if the amount is a valid decimal number
+        const decimalRegex = /^(\d+)(\.\d{1,6})?$/;
+        if (!decimalRegex.test(amount)) {
+          res.status(400).json({
+            error: 'Invalid amount format',
+            message: 'Amount must be a valid decimal number with up to 6 decimal places'
+          });
+          return;
+        }
+
+        // Amount appears valid, pass it to the MCP server as a string
+        const result = await mcpServer.sendFunds(destinationAddress, amount);
         
         // Log transaction details securely (no sensitive data)
         logger.info(`Funds sent to address (masked): ${destinationAddress.substring(0, 10)}...`, {
-          amount: amount.toString(),
+          amount: amount,
           txHash: result.txHash,
           authenticated: true
         });
