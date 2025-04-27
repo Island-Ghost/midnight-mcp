@@ -162,32 +162,13 @@ export class MCPServer {
   }
   
   /**
-   * Validate a transaction by its hash
-   * @param txHash The transaction hash to validate
-   * @returns Status object containing the transaction status
-   * @throws MCPError if wallet is not ready or transaction is not found
-   */
-  public validateTx(txHash: string): { status: TransactionStatus } {
-    if (!this.isReady()) {
-      throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
-    }
-    
-    const transaction = this.transactions.get(txHash);
-    if (!transaction) {
-      throw new MCPError(MCPErrorType.TX_NOT_FOUND, `Transaction ${txHash} not found`);
-    }
-    
-    return { status: transaction.status };
-  }
-  
-  /**
    * Verify if a transaction with the specified identifier has been received by the wallet
    * 
    * @param identifier The transaction identifier to verify (not the transaction hash)
    * @returns Verification result with transaction existence and sync status
    * @throws MCPError if wallet is not ready or verification fails
    */
-  public hasReceivedTransactionByIdentifier(identifier: string): { 
+  public confirmTransactionHasBeenReceived(identifier: string): { 
     exists: boolean;
     syncStatus: {
       syncedIndices: bigint;
