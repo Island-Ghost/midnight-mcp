@@ -279,7 +279,17 @@ async function main() {
           authenticated: true
         });
         
-        res.json(result);
+        // Convert BigInt values to strings before sending the response
+        const responseData = {
+          txHash: result.txHash,
+          syncStatus: {
+            syncedIndices: result.syncStatus.syncedIndices.toString(),
+            totalIndices: result.syncStatus.totalIndices.toString(),
+            isFullySynced: result.syncStatus.isFullySynced
+          }
+        };
+        
+        res.json(responseData);
       } catch (error) {
         logger.error('Error sending funds', error);
         
@@ -302,7 +312,18 @@ async function main() {
       try {
         const { identifier } = req.params;
         const result = mcpServer.confirmTransactionHasBeenReceived(identifier);
-        res.json(result);
+        
+        // Convert BigInt values to strings before sending the response
+        const responseData = {
+          exists: result.exists,
+          syncStatus: {
+            syncedIndices: result.syncStatus.syncedIndices.toString(),
+            totalIndices: result.syncStatus.totalIndices.toString(),
+            isFullySynced: result.syncStatus.isFullySynced
+          }
+        };
+        
+        res.json(responseData);
       } catch (error) {
         logger.error('Error checking transaction by identifier', error);
         res.status(500).json({ 
