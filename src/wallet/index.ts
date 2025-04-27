@@ -5,7 +5,8 @@ import { webcrypto } from 'crypto';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as Rx from 'rxjs';
-import { DockerComposeEnvironment, Wait, type StartedDockerComposeEnvironment } from 'testcontainers';
+// Remove direct import of testcontainers
+// import { DockerComposeEnvironment, Wait, type StartedDockerComposeEnvironment } from 'testcontainers';
 import { setNetworkId, NetworkId, getZswapNetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { nativeToken } from '@midnight-ntwrk/ledger';
 import { WalletBuilder } from '@midnight-ntwrk/wallet';
@@ -16,6 +17,25 @@ import { config } from '../config.js';
 // Set up crypto for Scala.js
 // @ts-expect-error: It's needed to make Scala.js and WASM code able to use cryptography
 globalThis.crypto = webcrypto;
+
+// Define necessary types for testcontainers to keep TypeScript happy
+// These will be used only for type annotations, not in runtime
+interface DockerContainer {
+  getFirstMappedPort(): number;
+}
+
+interface StartedDockerComposeEnvironment {
+  getContainer(containerName: string): DockerContainer;
+  down(): Promise<void>;
+}
+
+interface DockerComposeEnvironment {
+  withWaitStrategy(containerName: string, waitStrategy: any): DockerComposeEnvironment;
+  up(): Promise<StartedDockerComposeEnvironment>;
+}
+
+// Flag to check if we're in development or production
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
 /**
  * Configuration for wallet connection to Midnight network
@@ -98,7 +118,7 @@ export class WalletManager {
   private ready: boolean = false;
   private config: WalletConfig;
   private logger: Logger;
-  private dockerEnv?: DockerComposeEnvironment;
+  private dockerEnv?: any; // Use any for now, will be assigned proper type at runtime
   private startedEnv?: StartedDockerComposeEnvironment;
   private walletSyncSubscription?: Rx.Subscription;
   private walletInitPromise: Promise<void>;
@@ -141,11 +161,18 @@ export class WalletManager {
     this.walletSeed = seed;
     
     // Create Docker environment only if we're not using an external proof server
-    if (!externalConfig?.useExternalProofServer) {
+    // and we're in development mode
+    if (!externalConfig?.useExternalProofServer && isDevelopment) {
       this.logger.info('Setting up Docker environment, using internal proof server');
       this.setupDockerEnvironment();
-    } else {
+    } else if (externalConfig?.useExternalProofServer) {
       this.logger.info(`Using external proof server at ${this.config.proofServer}`);
+    } else if (!isDevelopment) {
+      this.logger.info('Running in production mode, skipping Docker environment setup. External proof server must be configured.');
+      // In production, ensure we have an external proof server if Docker can't be used
+      if (!externalConfig?.useExternalProofServer) {
+        this.logger.warn('WARNING: Running in production without external proof server configuration.');
+      }
     }
     
     // Initialize wallet asynchronously to not block MCP server startup
@@ -155,8 +182,14 @@ export class WalletManager {
   /**
    * Configure Docker environment for proof server
    */
-  private setupDockerEnvironment(): void {
+  private async setupDockerEnvironment(): Promise<void> {
     try {
+      // Skip setup in production
+      if (!isDevelopment) {
+        this.logger.info('Skipping Docker environment setup in production mode');
+        return;
+      }
+      
       const currentDir = getCurrentDir();
       const configDir = path.resolve(currentDir, './src/wallet/config');
       this.logger.debug('Config directory: %s', configDir);
@@ -171,15 +204,23 @@ export class WalletManager {
         throw new Error(`Proof server YAML file not found at ${proofServerYml}`);
       }
       
-      this.dockerEnv = new DockerComposeEnvironment(
-        configDir,
-        'proof-server-testnet.yml',
-      ).withWaitStrategy(
-        CONTAINER_NAME, 
-        Wait.forLogMessage('Actix runtime found; starting in Actix runtime', 1)
-      );
-      
-      this.logger.info('Docker environment configured');
+      try {
+        // Dynamically import testcontainers only in development mode
+        const { DockerComposeEnvironment, Wait } = await import('testcontainers');
+        
+        this.dockerEnv = new DockerComposeEnvironment(
+          configDir,
+          'proof-server-testnet.yml',
+        ).withWaitStrategy(
+          CONTAINER_NAME, 
+          Wait.forLogMessage('Actix runtime found; starting in Actix runtime', 1)
+        );
+        
+        this.logger.info('Docker environment configured');
+      } catch (importError) {
+        this.logger.error('Failed to import testcontainers', importError);
+        throw new Error('Failed to import testcontainers. Make sure it is installed as a development dependency.');
+      }
     } catch (error) {
       this.logger.error('Failed to configure Docker environment', error);
     }
@@ -190,21 +231,32 @@ export class WalletManager {
    */
   private async initializeWallet(seed: string, walletFilename?: string): Promise<void> {
     try {
-      // Start Docker environment if not using external proof server
-      if (this.dockerEnv && !this.config.useExternalProofServer) {
+      // Start Docker environment if not using external proof server and in development mode
+      if (this.dockerEnv && !this.config.useExternalProofServer && isDevelopment) {
         this.logger.info('Starting Docker environment');
-        this.startedEnv = await this.dockerEnv.up();
-        
-        // Update config with mapped ports
-        this.config.proofServer = mapContainerPort(
-          this.startedEnv, 
-          this.config.proofServer, 
-          CONTAINER_NAME
-        );
-        
-        this.logger.info(`Docker environment started, proof server at ${this.config.proofServer}`);
+        try {
+          this.startedEnv = await this.dockerEnv.up();
+          
+          // Update config with mapped ports
+          if (this.startedEnv) {
+            this.config.proofServer = mapContainerPort(
+              this.startedEnv, 
+              this.config.proofServer, 
+              CONTAINER_NAME
+            );
+            
+            this.logger.info(`Docker environment started, proof server at ${this.config.proofServer}`);
+          } else {
+            this.logger.error('Docker environment started but startedEnv is undefined');
+          }
+        } catch (dockerError) {
+          this.logger.error('Failed to start Docker environment', dockerError);
+          throw new Error('Failed to start Docker environment. If running in production, configure an external proof server.');
+        }
       } else if (this.config.useExternalProofServer) {
         this.logger.info(`Using external proof server at ${this.config.proofServer}`);
+      } else if (!isDevelopment) {
+        this.logger.info('Running in production mode without Docker, using configured proof server');
       }
       
       // Generate a random seed if not provided
@@ -615,8 +667,8 @@ export class WalletManager {
         this.logger.info('Wallet closed successfully');
       }
       
-      // Shutdown Docker environment only if we started it
-      if (this.startedEnv && !this.config.useExternalProofServer) {
+      // Shutdown Docker environment only if we started it and we're in development mode
+      if (this.startedEnv && !this.config.useExternalProofServer && isDevelopment) {
         await this.startedEnv.down();
         this.logger.info('Docker environment shut down successfully');
       }
