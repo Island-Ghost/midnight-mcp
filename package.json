@@ -2,14 +2,12 @@
   "packageManager": "yarn@4.1.0",
   "type": "module",
   "workspaces": [
-    "compact",
     "examples/*",
     "examples/counter/*",
     "examples/bboard/*",
     "examples/bboard-tutorial/*"
   ],
   "scripts": {
-    "compact": "turbo run compact",
     "build": "turbo run build",
     "test": "turbo run test",
     "test-e2e": "turbo run test-e2e",

@@ -124,14 +124,15 @@ export class WalletManager {
    * @param externalConfig Optional external configuration for connecting to a proof server
    */
   constructor(networkId: NetworkId, seed: string, walletFilename: string, externalConfig?: WalletConfig) {
+    this.logger = createLogger('wallet-manager');
     // Set network ID if provided, default to TestNet
+    this.logger.info('Initializing WalletManager with networkId: %s, walletFilename: %s, externalConfig: %s', networkId, walletFilename, externalConfig?.useExternalProofServer);
     this.config = externalConfig || new TestnetRemoteConfig();
     if (networkId) {
       setNetworkId(networkId);
     }
     
     // Initialize logger
-    this.logger = createLogger('wallet-manager');
     
     this.logger.info('Initializing WalletManager');
     
@@ -141,6 +142,7 @@ export class WalletManager {
     
     // Create Docker environment only if we're not using an external proof server
     if (!externalConfig?.useExternalProofServer) {
+      this.logger.info('Setting up Docker environment, using internal proof server');
       this.setupDockerEnvironment();
     } else {
       this.logger.info(`Using external proof server at ${this.config.proofServer}`);

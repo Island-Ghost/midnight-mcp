@@ -8,7 +8,6 @@ examples/
 coverage/
 .github/
 .vscode/
-.yarn
 flake.nix
 flake.lock
 renovate.json

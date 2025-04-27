@@ -13,8 +13,8 @@ RUN corepack enable && corepack prepare yarn@4.1.0 --activate
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 
-# Install dependencies
-RUN yarn install --immutable
+# Install dependencies using node-modules approach
+RUN yarn install
 
 # Copy source code
 COPY tsconfig.json tsconfig.build.json ./

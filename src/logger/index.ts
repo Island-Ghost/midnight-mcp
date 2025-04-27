@@ -1,4 +1,6 @@
 import * as pino from 'pino';
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * Available log levels in ascending order of importance.
@@ -226,6 +228,24 @@ export const LoggerConfig = {
 };
 
 /**
+ * Ensure the directory for a log file exists
+ * @param filePath Path to the log file
+ */
+function ensureLogDirectoryExists(filePath: string): void {
+  const dirPath = path.dirname(filePath);
+  
+  if (!fs.existsSync(dirPath)) {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+      console.log(`Created log directory: ${dirPath}`);
+    } catch (error) {
+      console.error(`Failed to create log directory ${dirPath}:`, error);
+      throw error;
+    }
+  }
+}
+
+/**
  * Create GCP-compatible log formatter
  */
 function createGCPFormatter(config: GCPLoggerConfig): pino.LoggerOptions {
@@ -377,6 +397,8 @@ export function createLogger(name: string, options: LoggerOptions = {}): pino.Lo
   // Add file transport if enabled and file path provided
   const outputFile = options.outputFile || (LoggerConfig.enableFileOutput ? LoggerConfig.defaultLogFile : undefined);
   if (outputFile) {
+    // Ensure the directory exists before creating the log file
+    ensureLogDirectoryExists(outputFile);
     destinations.push(pino.destination(outputFile));
   }
   
