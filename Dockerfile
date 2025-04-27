@@ -62,9 +62,8 @@ USER appuser
 # Expose default port
 EXPOSE 3000
 
-# Set environment variables
+# Set minimal environment defaults (will be overridden by .env file)
 ENV NODE_ENV=production
-ENV USE_EXTERNAL_PROOF_SERVER=true
 
 # Command to run the application
 CMD ["node", "--experimental-specifier-resolution=node", "dist/server.js"] 

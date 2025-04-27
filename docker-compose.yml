@@ -9,17 +9,11 @@ services:
     container_name: midnight-mcp
     env_file: .env
     environment:
-      - NODE_ENV=production
-      - USE_EXTERNAL_PROOF_SERVER=${USE_EXTERNAL_PROOF_SERVER:-true}
-      - PROOF_SERVER=${PROOF_SERVER:-http://proof-server:6300}
-      - INDEXER=${INDEXER:-https://indexer.testnet-02.midnight.network/api/v1/graphql}
-      - INDEXER_WS=${INDEXER_WS:-wss://indexer.testnet-02.midnight.network/api/v1/graphql/ws}
-      - NODE=${NODE:-https://rpc.testnet-02.midnight.network}
-      - SEED=${SEED:?SEED environment variable is required}
-      - NETWORK_ID=${NETWORK_ID:-TestNet}
-      - WALLET_FILENAME=${WALLET_FILENAME:-midnight-wallet}
+      # Only keeping service-specific variables that differ from .env
+      - PROOF_SERVER=http://proof-server:6300
       - WALLET_BACKUP_FOLDER=/app/wallet-backups
-      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # This validation ensures the critical SEED variable is provided
+      - SEED=${SEED:?SEED environment variable is required}
     ports:
       - "${MCP_PORT:-3000}:3000"
     depends_on:
@@ -44,7 +38,7 @@ services:
     environment:
       - RUST_LOG=info
     ports:
-      - "6300:6300"
+      - "${PROOF_SERVER_PORT:-6300}:6300"
     entrypoint: []
     command: ["midnight-proof-server", "--network", "testnet"]
     networks:
