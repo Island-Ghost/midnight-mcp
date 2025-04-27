@@ -16,6 +16,7 @@ Each agent runs its own Wallet MCP instance, responsible for managing its privat
   - Sending funds.
   - Validating transactions.
 - Secure by design: no external access to private keys or seed management.
+- API key authentication for secure communication between agents and MCP server.
 
 ---
 
@@ -25,6 +26,7 @@ The application uses environment variables for configuration. For development, t
 
 ### Required Variables
 - `SEED` - Wallet seed (required for initialization)
+- `API_KEY` - Secret key for authenticating API requests
 
 ### Optional Variables
 - `NETWORK_ID` - Network to connect to (`MainNet`, `TestNet`, or `DevNet`). Defaults to `TestNet`
@@ -32,23 +34,24 @@ The application uses environment variables for configuration. For development, t
 - `LOG_LEVEL` - Logging level (`debug`, `info`, `warn`, `error`). Defaults to `info`
 
 ### Setup
-1. Copy the `.env.example` file to `.env`
-2. Fill in the required values in the `.env` file
-3. For production, inject these environment variables via Docker or the host environment
+1. Copy the `.env.example` file to `.env` (an example file is provided with all configurable options)
+2. Generate a wallet seed and API key (see next section)
+3. Fill in the required values in the `.env` file
+4. For production, inject these environment variables via Docker or the host environment
 
 ---
 
-## Seed Generation
+## Seed and API Key Generation
 
-The project includes a `generate-seed.ts` script in the `scripts` directory to help generate secure BIP39 mnemonics and wallet seeds for Midnight.
+The project includes a `generate-seed.ts` script in the `scripts` directory to help generate secure BIP39 mnemonics, wallet seeds, and API keys for Midnight.
 
 ### Using the Generate Seed Script
 
 ```bash
-# Run the script with default options (24-word mnemonic)
+# Run the script with default options (generates wallet seed, mnemonic, and API key)
 yarn generate-seed
 
-# Generate a 12-word mnemonic
+# Generate a 12-word mnemonic (default is 24-word)
 yarn generate-seed --words 12
 
 # Add a password for additional security
@@ -63,6 +66,13 @@ yarn generate-seed --entropy "your-hex-entropy"
 # Derive a seed from an existing mnemonic
 yarn generate-seed --mnemonic "your mnemonic phrase here"
 ```
+
+The script will generate three important pieces of information:
+1. **Midnight Seed** - A hexadecimal string that serves as your wallet seed
+2. **BIP39 Mnemonic** - A sequence of words representing the seed
+3. **API Key** - A secure random key used for authenticating API requests
+
+**IMPORTANT NOTE:** The BIP39 mnemonic can be used with most GUI wallet applications that support the Midnight blockchain. This means anyone with access to your mnemonic phrase can access your funds through a standard wallet interface. Keep your mnemonic phrase secure and private.
 
 ### Available Options
 
@@ -79,6 +89,40 @@ yarn generate-seed --mnemonic "your mnemonic phrase here"
 ### Midnight Wallet Seed Note
 
 For Midnight wallet, the seed is the entropy value used to generate the BIP39 mnemonic. When using the script, you should save both the seed and the mnemonic for complete wallet recovery.
+
+---
+
+## API Authentication
+
+The MCP server requires authentication for all API requests. API keys are generated using the `generate-seed.ts` script alongside the wallet seed.
+
+Authentication can be provided in one of two ways:
+
+1. **HTTP Header** (recommended):
+   ```
+   x-api-key: your-generated-api-key
+   ```
+
+2. **Query Parameter**:
+   ```
+   ?api_key=your-generated-api-key
+   ```
+
+Example code for making authenticated requests:
+
+```javascript
+// Using x-api-key header (recommended)
+fetch('http://localhost:3000/address', {
+  headers: {
+    'x-api-key': 'your-api-key-here'
+  }
+})
+
+// Using query parameter
+fetch('http://localhost:3000/address?api_key=your-api-key-here')
+```
+
+The API key must be configured in the `.env` file with the `API_KEY` variable.
 
 ---
 
@@ -102,6 +146,13 @@ For full method details, see [docs/wallet-mcp-api.md](./docs/wallet-mcp-api.md).
 - **No blocking calls** — if the wallet is not ready, MCP immediately returns an error.
 - **Persistence** — wallet state is saved locally for restart recovery.
 - **Per-agent isolation** — each AI agent has its own separate Wallet MCP instance.
+- **Secure authentication** — API key provides controlled access to wallet operations.
+
+---
+
+## Production Deployment
+
+For detailed instructions on deploying the MCP server in a production environment, see [PRODUCTION.md](./PRODUCTION.md).
 
 ---
 

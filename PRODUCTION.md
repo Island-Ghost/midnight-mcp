@@ -1,139 +1,172 @@
 # Midnight MCP Production Deployment Guide
 
-This guide outlines how to deploy the Midnight MCP (Midnight Coordination Point) server and proof server in a production environment using Docker Compose.
+This guide outlines how to deploy the Midnight MCP (Midnight Coordination Point) server in a production environment using Docker Compose.
 
 ## Prerequisites
 
 - Docker and Docker Compose installed on your server
-- A secure environment for storing sensitive wallet seeds
+- A secure environment for storing sensitive wallet seeds and API keys
 
-## Quick Start
+## Production Deployment Steps
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-organization/midnight-mcp.git
-   cd midnight-mcp
-   ```
+### 1. Generate Wallet Seed and API Key
 
-2. Create a `.env` file with your configuration (you can copy from `.env.example`):
-   ```bash
-   cp .env.example .env
-   ```
-
-3. Generate a new wallet seed (if you don't already have one):
-   ```bash
-   docker-compose run --rm mcp yarn generate-seed
-   ```
-
-4. Update the `.env` file with your seed and any other configuration:
-   ```
-   SEED=your_generated_seed_here
-   NETWORK_ID=TestNet
-   # Configure other settings as needed
-   ```
-
-5. Start the services:
-   ```bash
-   docker-compose up -d
-   ```
-
-6. Check the logs to monitor the startup process:
-   ```bash
-   docker-compose logs -f
-   ```
-
-## Configuration Options
-
-### Required Environment Variables
-
-- `SEED`: Your wallet seed (required)
-
-### Optional Environment Variables
-
-- `NETWORK_ID`: Network to connect to (MainNet, TestNet, DevNet - defaults to TestNet)
-- `MCP_PORT`: Port to expose the MCP server on (defaults to 3000)
-- `PROOF_SERVER_PORT`: Port to expose the proof server on (defaults to 6300)
-- `WALLET_FILENAME`: Name used for wallet backup files (defaults to midnight-wallet)
-- `LOG_LEVEL`: Logging level (debug, info, warn, error - defaults to info)
-
-### Network Configuration
-
-By default, the MCP server will connect to the Midnight TestNet. To connect to a different network:
-
-```
-NETWORK_ID=MainNet
-INDEXER=https://indexer.midnight.network/api/v1/graphql
-INDEXER_WS=wss://indexer.midnight.network/api/v1/graphql/ws
-NODE=https://rpc.midnight.network
-```
-
-## Volumes and Data Persistence
-
-The Docker Compose configuration creates several volumes to persist data:
-
-- `wallet-backups`: Stores wallet backup files
-- `logs`: Stores application logs
-- `proof-server-data`: Stores proof server data
-
-You can back up these volumes to ensure data persistence:
+The first step is to generate a wallet seed and API key that will be used for authentication:
 
 ```bash
-docker volume backup midnight-mcp_wallet-backups
+# Run the generate-seed script locally
+yarn generate-seed
+
 ```
 
-## Health Checks
+The script will generate and display:
+- A **Midnight Seed** (a hex string) - This is the entropy value used for your wallet
+- A **BIP39 Mnemonic** - The word sequence corresponding to your seed
+- A **Secure API Key** - Required for authenticating API requests to your MCP server
 
-The Docker Compose configuration includes health checks for both services. You can monitor the health status with:
+**IMPORTANT:** Save all of these values securely. The seed and mnemonic provide access to your funds, and the API key controls access to your MCP API.
+
+**NOTE:** The BIP39 mnemonic can be imported into any GUI wallet that supports the Midnight blockchain, providing direct access to your funds. Always keep your mnemonic secure.
+
+### 2. Configure Environment Variables
+
+Create a `.env` file with the necessary configuration values. An `.env.example` file is provided in the repository with all available options:
+
+```bash
+# Copy the example .env file and customize it
+cp .env.example .env
+```
+
+Edit the `.env` file to include your generated seed and API key:
+
+```
+# Required
+SEED=your_generated_seed_here
+API_KEY=your_generated_api_key_here
+
+# Optional (defaults shown)
+NETWORK_ID=TestNet
+MCP_PORT=3000
+PROOF_SERVER_PORT=6300
+WALLET_FILENAME=midnight-wallet
+LOG_LEVEL=info
+
+# Advanced network configuration (if needed)
+# INDEXER=https://custom-indexer.example.com/api/v1/graphql
+# INDEXER_WS=wss://custom-indexer.example.com/api/v1/graphql/ws
+# NODE=https://custom-node.example.com
+```
+
+### 3. Deploy with Docker Compose
+
+The project includes a `docker-compose.yml` file that configures both the MCP server and its required proof server for production use. The Docker Compose approach simplifies deployment by handling networking, volume management, and container coordination automatically.
+
+Start the services using:
+
+```bash
+# Start the services in detached mode
+docker-compose up -d
+```
+
+This will:
+- Build the MCP server image if needed
+- Start the MCP server and proof server containers
+- Link them on a private network
+- Mount the necessary volumes for data persistence
+- Expose the services on the configured ports
+
+To check the service status:
 
 ```bash
 docker-compose ps
 ```
 
-The MCP server exposes a `/health` endpoint that can be used for monitoring and load balancer checks.
+To view the logs:
 
-## Security Considerations
+```bash
+# View logs for all services
+docker-compose logs
 
-1. **Protect your seed**: The wallet seed grants full access to your funds. Ensure it's kept secret and secure.
+# View logs for just the MCP server and follow output
+docker-compose logs -f mcp
+```
 
-2. **Network security**: Configure your firewall to only expose the necessary ports.
+### 4. API Authentication
 
-3. **Consider using Docker secrets**: For production deployments, consider using Docker secrets instead of environment variables for sensitive data.
+Agents and services connecting to the MCP server must include the API key in each request.
 
-4. **Regular backups**: Set up a backup strategy for your wallet data.
+There are two ways to pass the API key:
 
-## Troubleshooting
-
-### Wallet Not Syncing
-
-If the wallet is not syncing properly:
-
-1. Check the logs:
-   ```bash
-   docker-compose logs mcp
+1. **HTTP header** (preferred method):
+   ```
+   x-api-key: your_generated_api_key_here
    ```
 
-2. Try restarting the services:
-   ```bash
-   docker-compose restart
+2. **Query parameter**:
+   ```
+   ?api_key=your_generated_api_key_here
    ```
 
-3. Check network connectivity to the indexer and node services.
+Example of making an authenticated request:
 
-### Proof Server Issues
+```bash
+curl -H "x-api-key: your_generated_api_key_here" http://your-server:3000/address
+```
 
-If the proof server is not functioning:
+## Container Management
 
-1. Check the logs:
-   ```bash
-   docker-compose logs proof-server
-   ```
+### Docker Compose Commands
 
-2. Ensure the NETWORK environment variable matches your NETWORK_ID.
+```bash
+# Stop all services
+docker-compose stop
 
-3. Verify that the proof server is accessible from the MCP container:
-   ```bash
-   docker-compose exec mcp wget --spider --quiet http://proof-server:6300/health
-   ```
+# Start all services
+docker-compose start
+
+# Restart all services
+docker-compose restart
+
+# Stop and remove containers, networks, and volumes
+docker-compose down
+
+# Rebuild and restart services
+docker-compose up -d --build
+```
+
+### Service-Specific Commands
+
+```bash
+# Restart just the MCP server
+docker-compose restart mcp
+
+# View logs for just the proof server
+docker-compose logs proof-server
+```
+
+## Data Persistence and Backups
+
+The Docker Compose configuration creates several volumes to persist data:
+
+- `wallet-backups`: Stores wallet backup files
+- `logs`: Stores application logs
+
+You can back up these volumes to ensure data persistence:
+
+```bash
+# Create a backup directory
+mkdir -p ~/midnight-mcp-backups
+
+# Back up the wallet backups
+docker run --rm -v midnight-mcp_wallet-backups:/data -v ~/midnight-mcp-backups:/backup \
+  busybox tar czf /backup/wallet-backups-$(date +%Y%m%d).tar.gz -C /data .
+
+# Back up the logs
+docker run --rm -v midnight-mcp_logs:/data -v ~/midnight-mcp-backups:/backup \
+  busybox tar czf /backup/logs-$(date +%Y%m%d).tar.gz -C /data .
+```
+
+Note the volume names include the project name prefix (usually the directory name or specified with `-p`).
 
 ## Upgrading
 
@@ -147,10 +180,28 @@ To upgrade to a new version:
 2. Rebuild and restart the services:
    ```bash
    docker-compose down
-   docker-compose build
-   docker-compose up -d
+   docker-compose up -d --build
    ```
 
-## Advanced Configuration
+This process will preserve all data stored in the volumes while upgrading the containers to the latest code.
 
-For advanced configurations, such as integration with external monitoring systems or custom network settings, refer to the detailed documentation. 
+## Troubleshooting
+
+### Connection Issues
+- Verify the containers are running: `docker-compose ps`
+- Check logs for errors: `docker-compose logs mcp`
+- Ensure API key is correctly configured in requests
+
+### Wallet Not Syncing
+- Check network connectivity to the indexer and node services
+- Verify NETWORK_ID is correct in your .env file
+- Restart the services: `docker-compose restart`
+
+### Proof Server Issues
+- Check if the proof server is running: `docker-compose ps proof-server`
+- View proof server logs: `docker-compose logs proof-server`
+- Ensure the MCP server can communicate with the proof server
+
+### API Authentication Errors
+- Confirm API_KEY in .env matches the key used in requests
+- Check that 'x-api-key' header is properly formatted in requests 
