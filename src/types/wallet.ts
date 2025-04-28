@@ -56,7 +56,7 @@ export interface TransactionVerificationResult {
  * Send funds operation result
  */
 export interface SendFundsResult {
-  txHash: string;
+  txIdentifier: string;
   syncStatus: {
     syncedIndices: bigint;
     totalIndices: bigint;

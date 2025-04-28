@@ -16,7 +16,6 @@ const COMMANDS = {
   GET_ADDRESS: 'Get wallet address',
   GET_BALANCE: 'Get wallet balance',
   SEND_FUNDS: 'Send funds to an address',
-  VALIDATE_TX: 'Validate a transaction by hash',
   CHECK_TX_BY_ID: 'Check for transaction by identifier',
   GET_WALLET_STATUS: 'Get detailed wallet status',
   SERVER_STATUS: 'Check server status',
@@ -121,8 +120,18 @@ async function getAddress() {
 async function getBalance() {
   try {
     const response = await fetchWithErrorHandling('/balance');
-    const { balance } = response as { balance: number | string };
-    console.log(chalk.green('Wallet balance:'), balance);
+    const balances = response as {
+      totalBalance: string;
+      availableBalance: string;
+      pendingBalance: string;
+      allCoinsBalance: string;
+    };
+    
+    console.log(chalk.green('Wallet Balances:'));
+    console.log(chalk.cyan('Total Balance:'), balances.totalBalance);
+    console.log(chalk.cyan('Available Balance:'), balances.availableBalance);
+    console.log(chalk.cyan('Pending Balance:'), balances.pendingBalance);
+    console.log(chalk.cyan('All Coins Balance:'), balances.allCoinsBalance);
   } catch (error) {
     console.error(chalk.red('Error getting balance:'), error);
   }
@@ -173,28 +182,6 @@ async function sendFunds() {
 }
 
 /**
- * Validate a transaction by hash
- */
-async function validateTx() {
-  const { txHash } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'txHash',
-      message: 'Enter transaction hash:',
-      validate: (value) => value.length > 0 ? true : 'Please enter a transaction hash'
-    }
-  ]);
-  
-  try {
-    const result = await fetchWithErrorHandling(`/tx/${txHash}`);
-    console.log(chalk.green('Transaction status:'));
-    console.log(JSON.stringify(result, null, 2));
-  } catch (error) {
-    console.error(chalk.red('Error validating transaction:'), error);
-  }
-}
-
-/**
  * Check for transaction by identifier
  */
 async function checkTxByIdentifier() {
@@ -228,7 +215,12 @@ interface WalletStatusResponse {
     percentage: number;
   };
   address: string;
-  balance: string; // bigint comes as string in JSON
+  balances: {
+    totalBalance: string;
+    availableBalance: string;
+    pendingBalance: string;
+    allCoinsBalance: string;
+  };
   recovering: boolean;
   recoveryAttempts: number;
   maxRecoveryAttempts: number;
@@ -240,7 +232,7 @@ interface WalletStatusResponse {
  */
 async function getWalletStatus() {
   try {
-    const status = await fetchWithErrorHandling('/wallet-status') as WalletStatusResponse;
+    const status = await fetchWithErrorHandling('/wallet/status') as WalletStatusResponse;
     
     // Format the wallet status for better readability
     const formattedStatus = {
@@ -263,7 +255,13 @@ async function getWalletStatus() {
     }
     
     console.log(chalk.cyan('Address:'), formattedStatus.address);
-    console.log(chalk.cyan('Balance:'), formattedStatus.balance);
+    
+    // Display detailed balance information
+    console.log(chalk.cyan('Balances:'));
+    console.log(chalk.cyan('  Total Balance:'), formattedStatus.balances.totalBalance);
+    console.log(chalk.cyan('  Available Balance:'), formattedStatus.balances.availableBalance);
+    console.log(chalk.cyan('  Pending Balance:'), formattedStatus.balances.pendingBalance);
+    console.log(chalk.cyan('  All Coins Balance:'), formattedStatus.balances.allCoinsBalance);
     
     if (formattedStatus.recovering) {
       console.log(chalk.cyan('Recovery:'), chalk.yellow(`In Progress (Attempt ${formattedStatus.recoveryAttempts}/${formattedStatus.maxRecoveryAttempts})`));
@@ -302,9 +300,6 @@ async function showMainMenu() {
       break;
     case COMMANDS.SEND_FUNDS:
       await sendFunds();
-      break;
-    case COMMANDS.VALIDATE_TX:
-      await validateTx();
       break;
     case COMMANDS.CHECK_TX_BY_ID:
       await checkTxByIdentifier();

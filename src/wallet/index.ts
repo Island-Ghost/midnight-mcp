@@ -181,23 +181,53 @@ export class WalletManager {
     this.walletFilename = walletFilename;
     this.walletSeed = seed;
     
-    // Create Docker environment only if we're not using an external proof server
-    // and we're in development mode
-    if (!externalConfig?.useExternalProofServer && isDevelopment) {
-      this.logger.info('Setting up Docker environment, using internal proof server');
-      this.setupDockerEnvironment();
-    } else if (externalConfig?.useExternalProofServer) {
-      this.logger.info(`Using external proof server at ${this.config.proofServer}`);
-    } else if (!isDevelopment) {
-      this.logger.info('Running in production mode, skipping Docker environment setup. External proof server must be configured.');
-      // In production, ensure we have an external proof server if Docker can't be used
-      if (!externalConfig?.useExternalProofServer) {
-        this.logger.warn('WARNING: Running in production without external proof server configuration.');
-      }
-    }
-    
     // Initialize wallet asynchronously to not block MCP server startup
-    this.walletInitPromise = this.initializeWallet(seed, this.walletFilename);
+    // Properly chain the async operations
+    this.walletInitPromise = this.initWalletWithProperSetup(seed, walletFilename, externalConfig);
+  }
+  
+  /**
+   * Private method to handle the proper setup sequence
+   * This ensures Docker environment is fully set up before wallet initialization
+   */
+  private async initWalletWithProperSetup(seed: string, walletFilename: string, externalConfig?: WalletConfig): Promise<void> {
+    try {
+      // Handle Docker environment setup first if needed
+      if (!externalConfig?.useExternalProofServer && isDevelopment) {
+        this.logger.info('Setting up Docker environment, using internal proof server');
+        try {
+          await this.setupDockerEnvironment();
+          this.logger.info('Docker environment setup completed successfully');
+        } catch (dockerSetupError) {
+          this.logger.error('Failed to set up Docker environment', dockerSetupError);
+          throw new Error('Docker environment setup failed. Wallet initialization cannot proceed.');
+        }
+      } else if (externalConfig?.useExternalProofServer) {
+        this.logger.info(`Using external proof server at ${this.config.proofServer}`);
+      } else if (!isDevelopment) {
+        this.logger.info('Running in production mode, skipping Docker environment setup. External proof server must be configured.');
+        // In production, ensure we have an external proof server if Docker can't be used
+        if (!externalConfig?.useExternalProofServer) {
+          this.logger.warn('WARNING: Running in production without external proof server configuration.');
+        }
+      }
+      
+      // Now that environment is properly set up, initialize the wallet
+      try {
+        await this.initializeWallet(seed, walletFilename);
+        this.logger.info('Wallet initialization sequence completed');
+      } catch (walletInitError: unknown) {
+        this.logger.error('Failed to initialize wallet', walletInitError);
+        // Rethrow with a clearer message
+        throw new Error(`Wallet initialization failed: ${walletInitError instanceof Error ? walletInitError.message : 'Unknown error'}`);
+      }
+    } catch (error) {
+      this.logger.error('Critical error during wallet setup process', error);
+      // Keep track of the setup failure to allow checking the state later
+      this.isRecovering = true;
+      this.recoveryAttempts += 1;
+      throw error; // Propagate error for higher-level handling
+    }
   }
   
   /**
@@ -658,7 +688,7 @@ export class WalletManager {
       const isFullySynced = this.totalIndices > 0n && this.syncedIndices === this.totalIndices;
       
       return {
-        txHash: submittedTransaction,
+        txIdentifier: submittedTransaction,
         syncStatus: {
           syncedIndices: this.syncedIndices,
           totalIndices: this.totalIndices,

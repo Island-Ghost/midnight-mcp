@@ -200,13 +200,38 @@ async function main() {
     
     // Status endpoint
     app.get('/status', (req, res) => {
-      const isReady = mcpServer.isReady();
-      res.json({ 
-        status: isReady ? 'ready' : 'syncing',
-        ready: isReady,
-        version: process.env.APP_VERSION || '0.0.1',
-        networkId: config.networkId
-      });
+      try {
+        const walletStatus = mcpServer.getWalletStatus();
+        res.json({ 
+          status: walletStatus.ready ? 'ready' : 'syncing',
+          ready: walletStatus.ready,
+          version: process.env.APP_VERSION || '0.0.1',
+          networkId: config.networkId,
+          details: {
+            syncing: walletStatus.syncing,
+            syncProgress: {
+              synced: walletStatus.syncProgress.synced.toString(),
+              total: walletStatus.syncProgress.total.toString(),
+              percentage: walletStatus.syncProgress.percentage
+            },
+            address: walletStatus.address,
+            balances: walletStatus.balances,
+            recovering: walletStatus.recovering,
+            recoveryAttempts: walletStatus.recoveryAttempts,
+            maxRecoveryAttempts: walletStatus.maxRecoveryAttempts,
+            isFullySynced: walletStatus.isFullySynced
+          }
+        });
+      } catch (error) {
+        // Fallback to basic status if full wallet status isn't available yet
+        const isReady = mcpServer.isReady();
+        res.json({ 
+          status: isReady ? 'ready' : 'initializing',
+          ready: isReady,
+          version: process.env.APP_VERSION || '0.0.1',
+          networkId: config.networkId
+        });
+      }
     });
     
     // Get wallet address - available even if wallet is not fully synced
@@ -243,8 +268,14 @@ async function main() {
     // Get wallet balance - requires wallet to be synced
     app.get('/balance', checkWalletReady, (req, res) => {
       try {
-        const balance = mcpServer.getBalance();
-        res.json({ balance: balance.toString() });
+        const balances = mcpServer.getBalance();
+        
+        res.json({
+          totalBalance: balances.totalBalance,
+          availableBalance: balances.availableBalance,
+          pendingBalance: balances.pendingBalance,
+          allCoinsBalance: balances.allCoinsBalance
+        });
       } catch (error) {
         logger.error('Error getting balance', error);
         res.status(500).json({ 
@@ -293,18 +324,19 @@ async function main() {
         // Log transaction details securely (no sensitive data)
         logger.info(`Funds sent to address (masked): ${destinationAddress.substring(0, 10)}...`, {
           amount: amount,
-          txHash: result.txHash,
+          txIdentifier: result.txIdentifier,
           authenticated: true
         });
-        
+
         // Convert BigInt values to strings before sending the response
         const responseData = {
-          txHash: result.txHash,
+          txIdentifier: result.txIdentifier,
           syncStatus: {
             syncedIndices: result.syncStatus.syncedIndices.toString(),
             totalIndices: result.syncStatus.totalIndices.toString(),
             isFullySynced: result.syncStatus.isFullySynced
-          }
+          },
+          amount: result.amount
         };
         
         res.json(responseData);
@@ -346,6 +378,38 @@ async function main() {
         logger.error('Error checking transaction by identifier', error);
         res.status(500).json({ 
           error: 'Failed to verify transaction by identifier', 
+          message: error instanceof Error ? error.message : String(error) 
+        });
+      }
+    });
+    
+    // Add a detailed wallet status endpoint
+    app.get('/wallet/status', (req, res) => {
+      try {
+        const walletStatus = mcpServer.getWalletStatus();
+        
+        // Convert BigInt values to strings before sending the response
+        const responseData = {
+          ready: walletStatus.ready,
+          syncing: walletStatus.syncing,
+          syncProgress: {
+            synced: walletStatus.syncProgress.synced.toString(),
+            total: walletStatus.syncProgress.total.toString(),
+            percentage: walletStatus.syncProgress.percentage
+          },
+          address: walletStatus.address,
+          balances: walletStatus.balances,
+          recovering: walletStatus.recovering,
+          recoveryAttempts: walletStatus.recoveryAttempts,
+          maxRecoveryAttempts: walletStatus.maxRecoveryAttempts,
+          isFullySynced: walletStatus.isFullySynced
+        };
+        
+        res.json(responseData);
+      } catch (error) {
+        logger.error('Error getting wallet status', error);
+        res.status(500).json({ 
+          error: 'Failed to get wallet status', 
           message: error instanceof Error ? error.message : String(error) 
         });
       }

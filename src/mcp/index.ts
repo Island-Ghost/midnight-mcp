@@ -86,10 +86,10 @@ export class MCPServer {
   
   /**
    * Get the wallet's current balance
-   * @returns The wallet balance details
+   * @returns The wallet balance details as strings
    * @throws MCPError if wallet is not ready
    */
-  public getBalance(): WalletBalances & { balance: bigint } {
+  public getBalance(): WalletBalances {
     if (!this.isReady()) {
       throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
     }
@@ -106,7 +106,7 @@ export class MCPServer {
    * Send funds to the specified destination address
    * @param destinationAddress Address to send the funds to
    * @param amount Amount of funds to send as a string (decimal value)
-   * @returns Transaction hash and sync status
+   * @returns Transaction hash, sync status, and amount sent
    * @throws MCPError if wallet is not ready, has insufficient funds, or transaction fails
    */
   public async sendFunds(destinationAddress: string, amount: string): Promise<WalletSendFundsResult> {
@@ -117,13 +117,10 @@ export class MCPServer {
     try {
       const result = await this.wallet.sendFunds(destinationAddress, amount);
       
-      return { 
-        txHash: result.txHash,
-        syncStatus: {
-          syncedIndices: result.syncedIndices,
-          totalIndices: result.totalIndices,
-          isFullySynced: result.isFullySynced
-        }
+      return {
+        txIdentifier: result.txIdentifier,
+        syncStatus: result.syncStatus,
+        amount: result.amount
       };
     } catch (error) {
       this.logger.error('Failed to send funds', error);
@@ -144,16 +141,7 @@ export class MCPServer {
     }
     
     try {
-      const result = this.wallet.hasReceivedTransactionByIdentifier(identifier);
-      
-      return {
-        exists: result.exists,
-        syncStatus: {
-          syncedIndices: result.syncedIndices,
-          totalIndices: result.totalIndices,
-          isFullySynced: result.isFullySynced
-        }
-      };
+      return this.wallet.hasReceivedTransactionByIdentifier(identifier);
     } catch (error) {
       this.logger.error('Error verifying transaction by identifier', error);
       throw new MCPError(
@@ -168,14 +156,9 @@ export class MCPServer {
    * @returns Detailed wallet status with sync information
    * @throws MCPError if there's an issue retrieving wallet status
    */
-  public getWalletStatus(): WalletStatus & { balance: bigint } {
+  public getWalletStatus(): WalletStatus {
     try {
-      const status = this.wallet.getWalletStatus();
-      // Add the balance field for backward compatibility
-      return {
-        ...status,
-        balance: status.balances.totalBalance
-      };
+      return this.wallet.getWalletStatus();
     } catch (error) {
       this.logger.error('Error getting wallet status', error);
       throw new MCPError(
