@@ -3,17 +3,17 @@
  */
 
 /**
- * Wallet balance types breakdown
+ * Wallet balance types breakdown with values represented as dust strings
  */
 export interface WalletBalances {
   // Total balance from the balances map (definitive and spendable excluding zero balances)
-  totalBalance: bigint;
+  totalBalance: string;
   // Immediately available coins that can be spent right now
-  availableBalance: bigint;
+  availableBalance: string;
   // Coins that are pending and not yet available for spending
-  pendingBalance: bigint;
+  pendingBalance: string;
   // All coins including both available and pending
-  allCoinsBalance: bigint;
+  allCoinsBalance: string;
 }
 
 /**
@@ -62,4 +62,5 @@ export interface SendFundsResult {
     totalIndices: bigint;
     isFullySynced: boolean;
   }
+  amount: string; // Amount sent in dust format
 } 

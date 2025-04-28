@@ -14,7 +14,7 @@ import { type Wallet } from '@midnight-ntwrk/wallet-api';
 import { type Resource } from '@midnight-ntwrk/wallet';
 import { config } from '../config.js';
 import { convertBigIntToDecimal, convertDecimalToBigInt } from './utils.js';
-import { WalletStatus, WalletBalances } from '../types/wallet.js';
+import { WalletStatus, WalletBalances, SendFundsResult, TransactionVerificationResult } from '../types/wallet.js';
 
 // Set up crypto for Scala.js
 // @ts-expect-error: It's needed to make Scala.js and WASM code able to use cryptography
@@ -112,6 +112,18 @@ const streamToString = async (stream: NodeJS.ReadableStream): Promise<string> =>
   });
 };
 
+// Internal wallet balances interface for type safety (using bigint for calculations)
+interface InternalWalletBalances {
+  // Total balance from the balances map (definitive and spendable excluding zero balances)
+  totalBalance: bigint;
+  // Immediately available coins that can be spent right now
+  availableBalance: bigint;
+  // Coins that are pending and not yet available for spending
+  pendingBalance: bigint;
+  // All coins including both available and pending
+  allCoinsBalance: bigint;
+}
+
 /**
  * WalletManager that handles wallet operations, initialization, and Docker containers
  */
@@ -125,7 +137,6 @@ export class WalletManager {
   private walletSyncSubscription?: Rx.Subscription;
   private walletInitPromise: Promise<void>;
   private walletAddress: string = '';
-  private walletBalance: bigint = 0n;
   private walletFilename: string = '';
   private lastSaveTime: number = 0;
   private saveInterval: number = 5000; // Save at most every 5 seconds
@@ -137,17 +148,9 @@ export class WalletManager {
   private syncedIndices: bigint = 0n;
   private totalIndices: bigint = 0n;
   private walletState: any = null;
-  // Track different balance types for the wallet
-  private walletBalances: {
-    // Total balance from the balances map (definitive and spendable excluding zero balances)
-    totalBalance: bigint;
-    // Immediately available coins that can be spent right now
-    availableBalance: bigint;
-    // Coins that are pending and not yet available for spending
-    pendingBalance: bigint;
-    // All coins including both available and pending
-    allCoinsBalance: bigint;
-  } = {
+  
+  // Track different balance types for the wallet (using bigint internally)
+  private walletBalances: InternalWalletBalances = {
     totalBalance: 0n,
     availableBalance: 0n,
     pendingBalance: 0n,
@@ -162,7 +165,7 @@ export class WalletManager {
    * @param externalConfig Optional external configuration for connecting to a proof server
    */
   constructor(networkId: NetworkId, seed: string, walletFilename: string, externalConfig?: WalletConfig) {
-    this.logger = createLogger('wallet-manager', {level:"error"});
+    this.logger = createLogger('wallet-manager');
     // Set network ID if provided, default to TestNet
     this.logger.info('Initializing WalletManager with networkId: %s, walletFilename: %s, externalConfig: %s', networkId, walletFilename, externalConfig?.useExternalProofServer);
     this.config = externalConfig || new TestnetRemoteConfig();
@@ -331,13 +334,13 @@ export class WalletManager {
           // Update wallet information
           this.walletAddress = state.address || '';
           
-          // Update wallet balances with detailed information
+          // Update wallet balances with detailed information - keep these as bigint internally
           const nativeBalance = state.balances[nativeToken()] ?? 0n;
           const allCoins = state.coins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
           const pendingBalance = state.pendingCoins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
           const availableBalance = state.availableCoins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
           
-          // Store all balance types
+          // Store all balance types as bigint internally for calculations
           this.walletBalances = {
             totalBalance: nativeBalance,
             availableBalance: availableBalance,
@@ -345,13 +348,12 @@ export class WalletManager {
             allCoinsBalance: allCoins
           };
           
-          // Keep backward compatibility
-          this.walletBalance = nativeBalance;
+          // Log balances in human-readable format
+          this.logger.info(`Native balance: ${convertBigIntToDecimal(nativeBalance)}`);
+          this.logger.info(`All coins: ${convertBigIntToDecimal(allCoins)}`);
+          this.logger.info(`Pending balance: ${convertBigIntToDecimal(pendingBalance)}`);
+          this.logger.info(`Immediate balance: ${convertBigIntToDecimal(availableBalance)}`);
           
-          this.logger.info(`Native balance: ${nativeBalance}`);
-          this.logger.info(`All coins: ${allCoins}`);
-          this.logger.info(`Pending balance: ${pendingBalance}`);
-          this.logger.info(`Immediate balance: ${availableBalance}`);
           this.syncedIndices = synced;
           this.totalIndices = total;
           
@@ -361,7 +363,7 @@ export class WalletManager {
               this.ready = true;
               this.logger.info('Wallet is fully synced and ready!');
               this.logger.info(`Wallet address: ${this.walletAddress}`);
-              this.logger.info(`Wallet balance: ${this.walletBalance}`);
+              this.logger.info(`Wallet balance: ${convertBigIntToDecimal(this.walletBalances.totalBalance)}`);
               
               // Save the fully synced wallet state
               await this.saveWalletToFile(this.walletFilename);
@@ -592,40 +594,33 @@ export class WalletManager {
   
   /**
    * Get the wallet's current balance with detailed breakdown
-   * @returns An object containing different balance types with their descriptions
+   * @returns An object containing different balance types with dust amounts as strings
    * @throws Error if wallet is not ready
    */
-  public getBalance(): WalletBalances & { balance: bigint } {
+  public getBalance(): WalletBalances {
     if (!this.ready) throw new Error('Wallet not ready');
     
     return {
-      totalBalance: this.walletBalances.totalBalance,
-      availableBalance: this.walletBalances.availableBalance,
-      pendingBalance: this.walletBalances.pendingBalance,
-      allCoinsBalance: this.walletBalances.allCoinsBalance,
-      balance: this.walletBalances.totalBalance // For backward compatibility
+      totalBalance: convertBigIntToDecimal(this.walletBalances.totalBalance),
+      availableBalance: convertBigIntToDecimal(this.walletBalances.availableBalance),
+      pendingBalance: convertBigIntToDecimal(this.walletBalances.pendingBalance),
+      allCoinsBalance: convertBigIntToDecimal(this.walletBalances.allCoinsBalance)
     };
   }
   
   /**
    * Send funds to the specified destination address
    * @param to Address to send the funds to
-   * @param amount Amount of funds to send (as a string with decimal value)
-   * @returns Transaction result with hash and sync status
+   * @param amount Amount of funds to send (as a string with decimal value in dust)
+   * @returns Transaction result with hash, sync status, and the amount as a dust string
    * @throws Error if wallet is not ready or if there are insufficient funds
    */
-  public async sendFunds(to: string, amount: string): Promise<{
-    txHash: string;
-    syncedIndices: bigint;
-    totalIndices: bigint;
-    isFullySynced: boolean;
-    amountBigInt: bigint;
-  }> {
+  public async sendFunds(to: string, amount: string): Promise<SendFundsResult> {
     if (!this.ready) throw new Error('Wallet not ready');
     if (!this.wallet) throw new Error('Wallet instance not available');
     
     try {
-      // Convert decimal amount string to BigInt
+      // Convert decimal amount string to BigInt for internal calculations
       const amountBigInt = convertDecimalToBigInt(amount);
       
       // First check if there are enough available funds
@@ -645,7 +640,7 @@ export class WalletManager {
         throw new Error(`Insufficient funds for transaction. You have ${formattedTotalBalance} total, but need ${amount}.`);
       }
       
-      // Create a transfer transaction
+      // Create a transfer transaction - still using bigint for SDK interface
       const transferRecipe = await this.wallet.transferTransaction([
         {
           amount: amountBigInt,
@@ -660,12 +655,16 @@ export class WalletManager {
       
       this.logger.info(`Transaction submitted: ${submittedTransaction}`);
       
+      const isFullySynced = this.totalIndices > 0n && this.syncedIndices === this.totalIndices;
+      
       return {
         txHash: submittedTransaction,
-        syncedIndices: this.syncedIndices,
-        totalIndices: this.totalIndices,
-        isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices,
-        amountBigInt
+        syncStatus: {
+          syncedIndices: this.syncedIndices,
+          totalIndices: this.totalIndices,
+          isFullySynced
+        },
+        amount // Return the original dust string input
       };
     } catch (error) {
       this.logger.error('Failed to send funds', error);
@@ -765,12 +764,7 @@ export class WalletManager {
    * @returns Object containing verification result and current sync status
    * @throws Error if wallet is not ready or not initialized
    */
-  public hasReceivedTransactionByIdentifier(identifier: string): { 
-    exists: boolean; 
-    syncedIndices: bigint; 
-    totalIndices: bigint;
-    isFullySynced: boolean;
-  } {
+  public hasReceivedTransactionByIdentifier(identifier: string): TransactionVerificationResult {
     if (!this.ready) throw new Error('Wallet not ready');
     if (!this.wallet) throw new Error('Wallet instance not available');
     
@@ -780,9 +774,11 @@ export class WalletManager {
         this.logger.warn('Transaction history not available in stored wallet state');
         return {
           exists: false, 
-          syncedIndices: this.syncedIndices, 
-          totalIndices: this.totalIndices,
-          isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
+          syncStatus: {
+            syncedIndices: this.syncedIndices, 
+            totalIndices: this.totalIndices,
+            isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
+          }
         };
       }
       
@@ -793,9 +789,11 @@ export class WalletManager {
       
       return {
         exists,
-        syncedIndices: this.syncedIndices,
-        totalIndices: this.totalIndices,
-        isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
+        syncStatus: {
+          syncedIndices: this.syncedIndices,
+          totalIndices: this.totalIndices,
+          isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
+        }
       };
     } catch (error) {
       this.logger.error(`Error verifying transaction receipt: ${error}`);
@@ -805,7 +803,7 @@ export class WalletManager {
 
   /**
    * Get detailed wallet status including sync progress, readiness, and recovery state
-   * @returns Detailed wallet status object
+   * @returns Detailed wallet status object with balances as dust strings
    */
   public getWalletStatus(): WalletStatus {
     // Calculate sync percentage for better UI representation
@@ -825,10 +823,10 @@ export class WalletManager {
       },
       address: this.walletAddress,
       balances: {
-        totalBalance: this.walletBalances.totalBalance,
-        availableBalance: this.walletBalances.availableBalance,
-        pendingBalance: this.walletBalances.pendingBalance,
-        allCoinsBalance: this.walletBalances.allCoinsBalance
+        totalBalance: convertBigIntToDecimal(this.walletBalances.totalBalance),
+        availableBalance: convertBigIntToDecimal(this.walletBalances.availableBalance),
+        pendingBalance: convertBigIntToDecimal(this.walletBalances.pendingBalance),
+        allCoinsBalance: convertBigIntToDecimal(this.walletBalances.allCoinsBalance)
       },
       recovering: this.isRecovering,
       recoveryAttempts: this.recoveryAttempts,
