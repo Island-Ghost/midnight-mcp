@@ -5,18 +5,27 @@ This guide outlines how to deploy the Midnight MCP (Midnight Coordination Point)
 ## Prerequisites
 
 - Docker and Docker Compose installed on your server
+- Node.js and Yarn installed for initial setup
 - A secure environment for storing sensitive wallet seeds and API keys
 
 ## Production Deployment Steps
 
-### 1. Generate Wallet Seed and API Key
+### 1. Clone and Install Dependencies
 
-The first step is to generate a wallet seed and API key that will be used for authentication:
+First install dependencies:
 
 ```bash
-# Run the generate-seed script locally
-yarn generate-seed
+# Install dependencies using Yarn
+yarn install
+```
 
+### 2. Generate Wallet Seed and API Key
+
+After installing dependencies, generate a wallet seed and API key that will be used for authentication:
+
+```bash
+# Run the generate-seed script
+yarn generate-seed
 ```
 
 The script will generate and display:
@@ -28,7 +37,7 @@ The script will generate and display:
 
 **NOTE:** The BIP39 mnemonic can be imported into any GUI wallet that supports the Midnight blockchain, providing direct access to your funds. Always keep your mnemonic secure.
 
-### 2. Configure Environment Variables
+### 3. Configure Environment Variables
 
 Create a `.env` file with the necessary configuration values. An `.env.example` file is provided in the repository with all available options:
 
@@ -57,7 +66,7 @@ LOG_LEVEL=info
 # NODE=https://custom-node.example.com
 ```
 
-### 3. Deploy with Docker Compose
+### 4. Deploy with Docker Compose
 
 The project includes a `docker-compose.yml` file that configures both the MCP server and its required proof server for production use. The Docker Compose approach simplifies deployment by handling networking, volume management, and container coordination automatically.
 
@@ -91,7 +100,7 @@ docker-compose logs
 docker-compose logs -f mcp
 ```
 
-### 4. API Authentication
+### 5. API Authentication
 
 Agents and services connecting to the MCP server must include the API key in each request.
 
