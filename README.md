@@ -92,6 +92,32 @@ For Midnight wallet, the seed is the entropy value used to generate the BIP39 mn
 
 ---
 
+## Development Tool
+
+The project includes an interactive CLI tool (`scripts/dev-tool.ts`) for interacting with a running Wallet MCP server via HTTP requests. This is useful for testing and debugging the MCP server locally.
+
+### Usage
+
+1. Ensure the MCP server is running.
+2. Make sure the `API_KEY` environment variable is set correctly in your `.env` file or environment.
+3. Run the tool using yarn:
+
+```bash
+yarn dev-tool
+```
+
+The tool will first prompt you to confirm or enter the URL of the running MCP server (defaulting to `http://localhost:3000`). After connecting, it presents a menu of available commands:
+
+- **Get wallet address**: Retrieves the address associated with the wallet managed by the MCP server.
+- **Get wallet balance**: Fetches the current available and pending balance.
+- **Send funds to an address**: Prompts for a destination address and amount, then initiates a transaction.
+- **Check for transaction by identifier**: Looks up the status of a transaction using its identifier.
+- **Get detailed wallet status**: Shows detailed information about the wallet's sync status, readiness, and recovery state.
+- **Check server status**: Pings the server's `/status` endpoint.
+- **Exit**: Quits the tool.
+
+---
+
 ## API Authentication
 
 The MCP server requires authentication for all API requests. API keys are generated using the `generate-seed.ts` script alongside the wallet seed.
