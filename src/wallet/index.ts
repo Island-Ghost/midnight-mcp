@@ -114,14 +114,10 @@ const streamToString = async (stream: NodeJS.ReadableStream): Promise<string> =>
 
 // Internal wallet balances interface for type safety (using bigint for calculations)
 interface InternalWalletBalances {
-  // Total balance from the balances map (definitive and spendable excluding zero balances)
-  totalBalance: bigint;
-  // Immediately available coins that can be spent right now
-  availableBalance: bigint;
+  // The total spendable balance in the wallet
+  balance: bigint;
   // Coins that are pending and not yet available for spending
   pendingBalance: bigint;
-  // All coins including both available and pending
-  allCoinsBalance: bigint;
 }
 
 /**
@@ -151,10 +147,8 @@ export class WalletManager {
   
   // Track different balance types for the wallet (using bigint internally)
   private walletBalances: InternalWalletBalances = {
-    totalBalance: 0n,
-    availableBalance: 0n,
-    pendingBalance: 0n,
-    allCoinsBalance: 0n
+    balance: 0n,
+    pendingBalance: 0n
   };
   
   /**
@@ -366,23 +360,17 @@ export class WalletManager {
           
           // Update wallet balances with detailed information - keep these as bigint internally
           const nativeBalance = state.balances[nativeToken()] ?? 0n;
-          const allCoins = state.coins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
           const pendingBalance = state.pendingCoins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
-          const availableBalance = state.availableCoins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
           
           // Store all balance types as bigint internally for calculations
           this.walletBalances = {
-            totalBalance: nativeBalance,
-            availableBalance: availableBalance,
-            pendingBalance: pendingBalance,
-            allCoinsBalance: allCoins
+            balance: nativeBalance,
+            pendingBalance: pendingBalance
           };
           
           // Log balances in human-readable format
           this.logger.info(`Native balance: ${convertBigIntToDecimal(nativeBalance)}`);
-          this.logger.info(`All coins: ${convertBigIntToDecimal(allCoins)}`);
           this.logger.info(`Pending balance: ${convertBigIntToDecimal(pendingBalance)}`);
-          this.logger.info(`Immediate balance: ${convertBigIntToDecimal(availableBalance)}`);
           
           this.syncedIndices = synced;
           this.totalIndices = total;
@@ -393,7 +381,7 @@ export class WalletManager {
               this.ready = true;
               this.logger.info('Wallet is fully synced and ready!');
               this.logger.info(`Wallet address: ${this.walletAddress}`);
-              this.logger.info(`Wallet balance: ${convertBigIntToDecimal(this.walletBalances.totalBalance)}`);
+              this.logger.info(`Wallet balance: ${convertBigIntToDecimal(this.walletBalances.balance)}`);
               
               // Save the fully synced wallet state
               await this.saveWalletToFile(this.walletFilename);
@@ -631,10 +619,8 @@ export class WalletManager {
     if (!this.ready) throw new Error('Wallet not ready');
     
     return {
-      totalBalance: convertBigIntToDecimal(this.walletBalances.totalBalance),
-      availableBalance: convertBigIntToDecimal(this.walletBalances.availableBalance),
-      pendingBalance: convertBigIntToDecimal(this.walletBalances.pendingBalance),
-      allCoinsBalance: convertBigIntToDecimal(this.walletBalances.allCoinsBalance)
+      balance: convertBigIntToDecimal(this.walletBalances.balance),
+      pendingBalance: convertBigIntToDecimal(this.walletBalances.pendingBalance)
     };
   }
   
@@ -654,11 +640,11 @@ export class WalletManager {
       const amountBigInt = convertDecimalToBigInt(amount);
       
       // First check if there are enough available funds
-      if (this.walletBalances.availableBalance < amountBigInt) {
+      if (this.walletBalances.balance < amountBigInt) {
         // If available balance is insufficient, check if pending funds would be enough
-        if (this.walletBalances.totalBalance >= amountBigInt) {
+        if (this.walletBalances.balance >= amountBigInt) {
           const pendingAmount = this.walletBalances.pendingBalance;
-          const formattedAvailableBalance = convertBigIntToDecimal(this.walletBalances.availableBalance);
+          const formattedAvailableBalance = convertBigIntToDecimal(this.walletBalances.balance);
           const formattedPendingAmount = convertBigIntToDecimal(pendingAmount);
           throw new Error(
             `Insufficient available funds for transaction. You have ${formattedAvailableBalance} available, ` +
@@ -666,7 +652,7 @@ export class WalletManager {
           );
         }
         // If total balance is also insufficient
-        const formattedTotalBalance = convertBigIntToDecimal(this.walletBalances.totalBalance);
+        const formattedTotalBalance = convertBigIntToDecimal(this.walletBalances.balance);
         throw new Error(`Insufficient funds for transaction. You have ${formattedTotalBalance} total, but need ${amount}.`);
       }
       
@@ -853,10 +839,8 @@ export class WalletManager {
       },
       address: this.walletAddress,
       balances: {
-        totalBalance: convertBigIntToDecimal(this.walletBalances.totalBalance),
-        availableBalance: convertBigIntToDecimal(this.walletBalances.availableBalance),
-        pendingBalance: convertBigIntToDecimal(this.walletBalances.pendingBalance),
-        allCoinsBalance: convertBigIntToDecimal(this.walletBalances.allCoinsBalance)
+        balance: convertBigIntToDecimal(this.walletBalances.balance),
+        pendingBalance: convertBigIntToDecimal(this.walletBalances.pendingBalance)
       },
       recovering: this.isRecovering,
       recoveryAttempts: this.recoveryAttempts,

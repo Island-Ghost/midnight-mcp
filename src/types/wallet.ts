@@ -6,14 +6,10 @@
  * Wallet balance types breakdown with values represented as dust strings
  */
 export interface WalletBalances {
-  // Total balance from the balances map (definitive and spendable excluding zero balances)
-  totalBalance: string;
-  // Immediately available coins that can be spent right now
-  availableBalance: string;
+  // The total spendable balance in the wallet
+  balance: string;
   // Coins that are pending and not yet available for spending
   pendingBalance: string;
-  // All coins including both available and pending
-  allCoinsBalance: string;
 }
 
 /**

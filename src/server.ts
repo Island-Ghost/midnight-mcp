@@ -215,7 +215,10 @@ async function main() {
               percentage: walletStatus.syncProgress.percentage
             },
             address: walletStatus.address,
-            balances: walletStatus.balances,
+            balances: {
+              balance: walletStatus.balances.balance,
+              pendingBalance: walletStatus.balances.pendingBalance
+            },
             recovering: walletStatus.recovering,
             recoveryAttempts: walletStatus.recoveryAttempts,
             maxRecoveryAttempts: walletStatus.maxRecoveryAttempts,
@@ -271,10 +274,8 @@ async function main() {
         const balances = mcpServer.getBalance();
         
         res.json({
-          totalBalance: balances.totalBalance,
-          availableBalance: balances.availableBalance,
-          pendingBalance: balances.pendingBalance,
-          allCoinsBalance: balances.allCoinsBalance
+          balance: balances.balance,
+          pendingBalance: balances.pendingBalance
         });
       } catch (error) {
         logger.error('Error getting balance', error);
@@ -398,7 +399,10 @@ async function main() {
             percentage: walletStatus.syncProgress.percentage
           },
           address: walletStatus.address,
-          balances: walletStatus.balances,
+          balances: {
+            balance: walletStatus.balances.balance,
+            pendingBalance: walletStatus.balances.pendingBalance
+          },
           recovering: walletStatus.recovering,
           recoveryAttempts: walletStatus.recoveryAttempts,
           maxRecoveryAttempts: walletStatus.maxRecoveryAttempts,

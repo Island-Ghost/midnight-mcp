@@ -121,17 +121,13 @@ async function getBalance() {
   try {
     const response = await fetchWithErrorHandling('/balance');
     const balances = response as {
-      totalBalance: string;
-      availableBalance: string;
+      balance: string;
       pendingBalance: string;
-      allCoinsBalance: string;
     };
     
     console.log(chalk.green('Wallet Balances:'));
-    console.log(chalk.cyan('Total Balance:'), balances.totalBalance);
-    console.log(chalk.cyan('Available Balance:'), balances.availableBalance);
+    console.log(chalk.cyan('Balance:'), balances.balance);
     console.log(chalk.cyan('Pending Balance:'), balances.pendingBalance);
-    console.log(chalk.cyan('All Coins Balance:'), balances.allCoinsBalance);
   } catch (error) {
     console.error(chalk.red('Error getting balance:'), error);
   }
@@ -216,10 +212,8 @@ interface WalletStatusResponse {
   };
   address: string;
   balances: {
-    totalBalance: string;
-    availableBalance: string;
+    balance: string;
     pendingBalance: string;
-    allCoinsBalance: string;
   };
   recovering: boolean;
   recoveryAttempts: number;
@@ -256,12 +250,10 @@ async function getWalletStatus() {
     
     console.log(chalk.cyan('Address:'), formattedStatus.address);
     
-    // Display detailed balance information
+    // Display simplified balance information
     console.log(chalk.cyan('Balances:'));
-    console.log(chalk.cyan('  Total Balance:'), formattedStatus.balances.totalBalance);
-    console.log(chalk.cyan('  Available Balance:'), formattedStatus.balances.availableBalance);
+    console.log(chalk.cyan('  Balance:'), formattedStatus.balances.balance);
     console.log(chalk.cyan('  Pending Balance:'), formattedStatus.balances.pendingBalance);
-    console.log(chalk.cyan('  All Coins Balance:'), formattedStatus.balances.allCoinsBalance);
     
     if (formattedStatus.recovering) {
       console.log(chalk.cyan('Recovery:'), chalk.yellow(`In Progress (Attempt ${formattedStatus.recoveryAttempts}/${formattedStatus.maxRecoveryAttempts})`));
