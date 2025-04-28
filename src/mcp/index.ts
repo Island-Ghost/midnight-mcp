@@ -2,6 +2,12 @@ import { WalletManager, WalletConfig } from '../wallet/index.js';
 import { setNetworkId, NetworkId } from '@midnight-ntwrk/midnight-js-network-id';
 import { createLogger } from '../logger/index.js';
 import type { Logger } from 'pino';
+import { 
+  WalletStatus, 
+  WalletBalances, 
+  SendFundsResult as WalletSendFundsResult,
+  TransactionVerificationResult  
+} from '../types/wallet.js';
 
 /**
  * Error types for the MCP API
@@ -22,17 +28,6 @@ export class MCPError extends Error {
     super(message);
     this.name = 'MCPError';
   }
-}
-
-/**
- * Result interface for send funds operation
- */
-interface SendFundsResult {
-  txHash: string;
-  syncedIndices: bigint;
-  totalIndices: bigint;
-  isFullySynced: boolean;
-  amountBigInt: bigint;
 }
 
 /**
@@ -91,10 +86,10 @@ export class MCPServer {
   
   /**
    * Get the wallet's current balance
-   * @returns The wallet balance as a number
+   * @returns The wallet balance details
    * @throws MCPError if wallet is not ready
    */
-  public getBalance(): bigint {
+  public getBalance(): WalletBalances & { balance: bigint } {
     if (!this.isReady()) {
       throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
     }
@@ -114,14 +109,7 @@ export class MCPServer {
    * @returns Transaction hash and sync status
    * @throws MCPError if wallet is not ready, has insufficient funds, or transaction fails
    */
-  public async sendFunds(destinationAddress: string, amount: string): Promise<{ 
-    txHash: string;
-    syncStatus: {
-      syncedIndices: bigint;
-      totalIndices: bigint;
-      isFullySynced: boolean;
-    }
-  }> {
+  public async sendFunds(destinationAddress: string, amount: string): Promise<WalletSendFundsResult> {
     if (!this.isReady()) {
       throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
     }
@@ -150,14 +138,7 @@ export class MCPServer {
    * @returns Verification result with transaction existence and sync status
    * @throws MCPError if wallet is not ready or verification fails
    */
-  public confirmTransactionHasBeenReceived(identifier: string): { 
-    exists: boolean;
-    syncStatus: {
-      syncedIndices: bigint;
-      totalIndices: bigint;
-      isFullySynced: boolean;
-    }
-  } {
+  public confirmTransactionHasBeenReceived(identifier: string): TransactionVerificationResult {
     if (!this.isReady()) {
       throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
     }
@@ -178,6 +159,28 @@ export class MCPServer {
       throw new MCPError(
         MCPErrorType.IDENTIFIER_VERIFICATION_FAILED, 
         `Failed to verify transaction with identifier: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+  
+  /**
+   * Get detailed wallet status including sync progress, readiness, and recovery state
+   * @returns Detailed wallet status with sync information
+   * @throws MCPError if there's an issue retrieving wallet status
+   */
+  public getWalletStatus(): WalletStatus & { balance: bigint } {
+    try {
+      const status = this.wallet.getWalletStatus();
+      // Add the balance field for backward compatibility
+      return {
+        ...status,
+        balance: status.balances.totalBalance
+      };
+    } catch (error) {
+      this.logger.error('Error getting wallet status', error);
+      throw new MCPError(
+        MCPErrorType.WALLET_NOT_READY,
+        `Failed to retrieve wallet status: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

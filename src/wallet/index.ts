@@ -13,7 +13,8 @@ import { WalletBuilder } from '@midnight-ntwrk/wallet';
 import { type Wallet } from '@midnight-ntwrk/wallet-api';
 import { type Resource } from '@midnight-ntwrk/wallet';
 import { config } from '../config.js';
-import { convertDecimalToBigInt } from './utils.js';
+import { convertBigIntToDecimal, convertDecimalToBigInt } from './utils.js';
+import { WalletStatus, WalletBalances } from '../types/wallet.js';
 
 // Set up crypto for Scala.js
 // @ts-expect-error: It's needed to make Scala.js and WASM code able to use cryptography
@@ -136,6 +137,22 @@ export class WalletManager {
   private syncedIndices: bigint = 0n;
   private totalIndices: bigint = 0n;
   private walletState: any = null;
+  // Track different balance types for the wallet
+  private walletBalances: {
+    // Total balance from the balances map (definitive and spendable excluding zero balances)
+    totalBalance: bigint;
+    // Immediately available coins that can be spent right now
+    availableBalance: bigint;
+    // Coins that are pending and not yet available for spending
+    pendingBalance: bigint;
+    // All coins including both available and pending
+    allCoinsBalance: bigint;
+  } = {
+    totalBalance: 0n,
+    availableBalance: 0n,
+    pendingBalance: 0n,
+    allCoinsBalance: 0n
+  };
   
   /**
    * Create a new WalletManager instance
@@ -145,7 +162,7 @@ export class WalletManager {
    * @param externalConfig Optional external configuration for connecting to a proof server
    */
   constructor(networkId: NetworkId, seed: string, walletFilename: string, externalConfig?: WalletConfig) {
-    this.logger = createLogger('wallet-manager');
+    this.logger = createLogger('wallet-manager', {level:"error"});
     // Set network ID if provided, default to TestNet
     this.logger.info('Initializing WalletManager with networkId: %s, walletFilename: %s, externalConfig: %s', networkId, walletFilename, externalConfig?.useExternalProofServer);
     this.config = externalConfig || new TestnetRemoteConfig();
@@ -313,7 +330,28 @@ export class WalletManager {
           
           // Update wallet information
           this.walletAddress = state.address || '';
-          this.walletBalance = state.balances[nativeToken()] ?? 0n;
+          
+          // Update wallet balances with detailed information
+          const nativeBalance = state.balances[nativeToken()] ?? 0n;
+          const allCoins = state.coins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
+          const pendingBalance = state.pendingCoins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
+          const availableBalance = state.availableCoins.filter(coin => coin.type === nativeToken()).reduce((acc, coin) => acc + coin.value, 0n);
+          
+          // Store all balance types
+          this.walletBalances = {
+            totalBalance: nativeBalance,
+            availableBalance: availableBalance,
+            pendingBalance: pendingBalance,
+            allCoinsBalance: allCoins
+          };
+          
+          // Keep backward compatibility
+          this.walletBalance = nativeBalance;
+          
+          this.logger.info(`Native balance: ${nativeBalance}`);
+          this.logger.info(`All coins: ${allCoins}`);
+          this.logger.info(`Pending balance: ${pendingBalance}`);
+          this.logger.info(`Immediate balance: ${availableBalance}`);
           this.syncedIndices = synced;
           this.totalIndices = total;
           
@@ -553,13 +591,20 @@ export class WalletManager {
   }
   
   /**
-   * Get the wallet's current balance
-   * @returns The wallet balance as a bigint
+   * Get the wallet's current balance with detailed breakdown
+   * @returns An object containing different balance types with their descriptions
    * @throws Error if wallet is not ready
    */
-  public getBalance(): bigint {
+  public getBalance(): WalletBalances & { balance: bigint } {
     if (!this.ready) throw new Error('Wallet not ready');
-    return this.walletBalance;
+    
+    return {
+      totalBalance: this.walletBalances.totalBalance,
+      availableBalance: this.walletBalances.availableBalance,
+      pendingBalance: this.walletBalances.pendingBalance,
+      allCoinsBalance: this.walletBalances.allCoinsBalance,
+      balance: this.walletBalances.totalBalance // For backward compatibility
+    };
   }
   
   /**
@@ -567,7 +612,7 @@ export class WalletManager {
    * @param to Address to send the funds to
    * @param amount Amount of funds to send (as a string with decimal value)
    * @returns Transaction result with hash and sync status
-   * @throws Error if wallet is not ready
+   * @throws Error if wallet is not ready or if there are insufficient funds
    */
   public async sendFunds(to: string, amount: string): Promise<{
     txHash: string;
@@ -580,12 +625,24 @@ export class WalletManager {
     if (!this.wallet) throw new Error('Wallet instance not available');
     
     try {
-      // Convert decimal amount string to BigInt (multiply by 1,000,000 to handle up to 6 decimal places)
+      // Convert decimal amount string to BigInt
       const amountBigInt = convertDecimalToBigInt(amount);
       
-      // Check if wallet has sufficient funds
-      if (this.walletBalance < amountBigInt) {
-        throw new Error('Insufficient funds for transaction');
+      // First check if there are enough available funds
+      if (this.walletBalances.availableBalance < amountBigInt) {
+        // If available balance is insufficient, check if pending funds would be enough
+        if (this.walletBalances.totalBalance >= amountBigInt) {
+          const pendingAmount = this.walletBalances.pendingBalance;
+          const formattedAvailableBalance = convertBigIntToDecimal(this.walletBalances.availableBalance);
+          const formattedPendingAmount = convertBigIntToDecimal(pendingAmount);
+          throw new Error(
+            `Insufficient available funds for transaction. You have ${formattedAvailableBalance} available, ` +
+            `but ${formattedPendingAmount} is still pending. Please wait for pending transactions to complete.`
+          );
+        }
+        // If total balance is also insufficient
+        const formattedTotalBalance = convertBigIntToDecimal(this.walletBalances.totalBalance);
+        throw new Error(`Insufficient funds for transaction. You have ${formattedTotalBalance} total, but need ${amount}.`);
       }
       
       // Create a transfer transaction
@@ -744,6 +801,40 @@ export class WalletManager {
       this.logger.error(`Error verifying transaction receipt: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Get detailed wallet status including sync progress, readiness, and recovery state
+   * @returns Detailed wallet status object
+   */
+  public getWalletStatus(): WalletStatus {
+    // Calculate sync percentage for better UI representation
+    const syncPercentage = this.totalIndices > 0n
+      ? Number((this.syncedIndices * 100n) / this.totalIndices)
+      : 0;
+      
+    const isFullySynced = this.totalIndices > 0n && this.syncedIndices === this.totalIndices;
+    
+    return {
+      ready: this.ready,
+      syncing: this.totalIndices > 0n && this.syncedIndices < this.totalIndices,
+      syncProgress: {
+        synced: this.syncedIndices,
+        total: this.totalIndices,
+        percentage: syncPercentage
+      },
+      address: this.walletAddress,
+      balances: {
+        totalBalance: this.walletBalances.totalBalance,
+        availableBalance: this.walletBalances.availableBalance,
+        pendingBalance: this.walletBalances.pendingBalance,
+        allCoinsBalance: this.walletBalances.allCoinsBalance
+      },
+      recovering: this.isRecovering,
+      recoveryAttempts: this.recoveryAttempts,
+      maxRecoveryAttempts: this.maxRecoveryAttempts,
+      isFullySynced
+    };
   }
 }
 

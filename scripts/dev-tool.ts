@@ -18,6 +18,7 @@ const COMMANDS = {
   SEND_FUNDS: 'Send funds to an address',
   VALIDATE_TX: 'Validate a transaction by hash',
   CHECK_TX_BY_ID: 'Check for transaction by identifier',
+  GET_WALLET_STATUS: 'Get detailed wallet status',
   SERVER_STATUS: 'Check server status',
   EXIT: 'Exit'
 };
@@ -216,6 +217,67 @@ async function checkTxByIdentifier() {
 }
 
 /**
+ * Interface for wallet status response
+ */
+interface WalletStatusResponse {
+  ready: boolean;
+  syncing: boolean;
+  syncProgress: {
+    synced: string; // bigint comes as string in JSON
+    total: string;  // bigint comes as string in JSON
+    percentage: number;
+  };
+  address: string;
+  balance: string; // bigint comes as string in JSON
+  recovering: boolean;
+  recoveryAttempts: number;
+  maxRecoveryAttempts: number;
+  isFullySynced: boolean;
+}
+
+/**
+ * Get detailed wallet status
+ */
+async function getWalletStatus() {
+  try {
+    const status = await fetchWithErrorHandling('/wallet-status') as WalletStatusResponse;
+    
+    // Format the wallet status for better readability
+    const formattedStatus = {
+      ...status,
+      syncProgress: {
+        ...status.syncProgress,
+        percentage: `${status.syncProgress.percentage.toFixed(2)}%`
+      }
+    };
+    
+    console.log(chalk.green('Wallet Status:'));
+    console.log(chalk.cyan('Ready:'), formattedStatus.ready ? chalk.green('Yes') : chalk.red('No'));
+    
+    if (formattedStatus.syncing) {
+      console.log(chalk.cyan('Sync Progress:'), chalk.yellow(`${formattedStatus.syncProgress.percentage} (${formattedStatus.syncProgress.synced}/${formattedStatus.syncProgress.total})`));
+    } else if (formattedStatus.isFullySynced) {
+      console.log(chalk.cyan('Sync Status:'), chalk.green('Fully Synced'));
+    } else {
+      console.log(chalk.cyan('Sync Status:'), chalk.yellow('Not Started or Unknown'));
+    }
+    
+    console.log(chalk.cyan('Address:'), formattedStatus.address);
+    console.log(chalk.cyan('Balance:'), formattedStatus.balance);
+    
+    if (formattedStatus.recovering) {
+      console.log(chalk.cyan('Recovery:'), chalk.yellow(`In Progress (Attempt ${formattedStatus.recoveryAttempts}/${formattedStatus.maxRecoveryAttempts})`));
+    }
+    
+    // Also output the raw JSON for full details
+    console.log(chalk.gray('\nRaw status data:'));
+    console.log(JSON.stringify(formattedStatus, null, 2));
+  } catch (error) {
+    console.error(chalk.red('Error getting wallet status:'), error);
+  }
+}
+
+/**
  * Main menu function
  */
 async function showMainMenu() {
@@ -246,6 +308,9 @@ async function showMainMenu() {
       break;
     case COMMANDS.CHECK_TX_BY_ID:
       await checkTxByIdentifier();
+      break;
+    case COMMANDS.GET_WALLET_STATUS:
+      await getWalletStatus();
       break;
     case COMMANDS.EXIT:
       console.log(chalk.green('Goodbye!'));
