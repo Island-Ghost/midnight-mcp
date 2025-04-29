@@ -27,10 +27,10 @@ interface Config {
   walletFilename: string;
   logLevel: string;
   useExternalProofServer: boolean;
-  proofServer?: string;
-  indexer?: string;
-  indexerWS?: string;
-  node?: string;
+  proofServer: string;
+  indexer: string;
+  indexerWS: string;
+  node: string;
 }
 
 /**
@@ -65,6 +65,10 @@ export function loadConfig(): Config {
   const indexer = process.env.INDEXER;
   const indexerWS = process.env.INDEXER_WS;
   const node = process.env.NODE;
+
+  if (!proofServer || !indexer || !indexerWS || !node) {
+    throw new Error('Proof server, indexer, indexerWS, and node are required when USE_EXTERNAL_PROOF_SERVER is true');
+  }
 
   return {
     seed,

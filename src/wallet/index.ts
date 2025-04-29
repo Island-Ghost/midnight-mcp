@@ -833,8 +833,8 @@ export class WalletManager {
       ready: this.ready,
       syncing: this.totalIndices > 0n && this.syncedIndices < this.totalIndices,
       syncProgress: {
-        synced: this.syncedIndices,
-        total: this.totalIndices,
+        synced: this.syncedIndices.toString(),
+        total: this.totalIndices.toString(),
         percentage: syncPercentage
       },
       address: this.walletAddress,

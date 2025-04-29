@@ -16,8 +16,8 @@ export interface WalletBalances {
  * Wallet sync progress information
  */
 export interface WalletSyncProgress {
-  synced: bigint;
-  total: bigint;
+  synced: string;
+  total: string;
   percentage: number;
 }
 

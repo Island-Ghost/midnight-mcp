@@ -21,6 +21,17 @@ export enum MCPErrorType {
 }
 
 /**
+ * Centralized error message mapping for MCP error types
+ */
+export const ERROR_MESSAGES = {
+  [MCPErrorType.WALLET_NOT_READY]: 'Wallet is not ready yet. Please try again later.',
+  [MCPErrorType.INSUFFICIENT_FUNDS]: 'Insufficient funds for this transaction.',
+  [MCPErrorType.TX_SUBMISSION_FAILED]: 'Transaction submission failed.',
+  [MCPErrorType.TX_NOT_FOUND]: 'Transaction not found.',
+  [MCPErrorType.IDENTIFIER_VERIFICATION_FAILED]: 'Transaction verification failed.',
+};
+
+/**
  * Error class for MCP errors
  */
 export class MCPError extends Error {
@@ -28,6 +39,68 @@ export class MCPError extends Error {
     super(message);
     this.name = 'MCPError';
   }
+}
+
+/**
+ * Generic error handler for MCP errors
+ * @param error The error to handle
+ * @returns A formatted response with appropriate error message
+ */
+export function handleMCPError(error: unknown) {
+  if (error instanceof MCPError) {
+    const message = ERROR_MESSAGES[error.type] || error.message || 'An unexpected error occurred.';
+    return { 
+      content: [{ 
+        type: "text" as const, 
+        text: message 
+      }] 
+    };
+  }
+  
+  // For non-MCP errors, rethrow to be caught by the outer handler
+  throw error;
+}
+
+/**
+ * Higher-order function for tool handlers without parameters
+ * @param handler The function to wrap
+ * @returns A wrapped function that handles errors
+ */
+export function createSimpleToolHandler(handler: () => any) {
+  return async () => {
+    try {
+      const result = await handler();
+      return { 
+        content: [{ 
+          type: "text" as const, 
+          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) 
+        }] 
+      };
+    } catch (error: unknown) {
+      return handleMCPError(error);
+    }
+  };
+}
+
+/**
+ * Higher-order function for tool handlers with parameters
+ * @param handler The function to wrap
+ * @returns A wrapped function that handles errors
+ */
+export function createParameterizedToolHandler<T extends Record<string, any>>(handler: (args: T) => any) {
+  return async (args: T) => {
+    try {
+      const result = await handler(args);
+      return { 
+        content: [{ 
+          type: "text" as const, 
+          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) 
+        }] 
+      };
+    } catch (error: unknown) {
+      return handleMCPError(error);
+    }
+  };
 }
 
 /**
