@@ -60,13 +60,3 @@ export interface SendFundsResult {
   }
   amount: string; // Amount sent in dust format
 } 
-
-/**
- * Send funds processing result
- */
-export interface SendFundsProcessingResult {
-  status: 'pending' | 'failed';
-  processIdentifier: string;
-  destinationAddress?: string;
-  amount?: string;
-} 
