@@ -139,6 +139,37 @@ function getServer() {
     )
   );
 
+  // Add transaction status tool
+  server.tool(
+    'getTransactionStatus',
+    'Get the status of a transaction by ID',
+    {
+      transactionId: z.string().min(1)
+    },
+    createParameterizedToolHandler((args: { transactionId: string }) => 
+      midnightServer.getTransactionStatus(args.transactionId)
+    )
+  );
+
+  // Add get all transactions tool
+  server.tool(
+    'getTransactions',
+    'Get all transactions, optionally filtered by state',
+    {
+      state: z.string().optional()
+    },
+    createParameterizedToolHandler((args: { state?: string }) => 
+      midnightServer.getTransactions(args.state as any)
+    )
+  );
+
+  // Add get pending transactions tool
+  server.tool(
+    'getPendingTransactions',
+    'Get all pending transactions (INITIATED or SENT)',
+    createSimpleToolHandler(() => midnightServer.getPendingTransactions())
+  );
+
   return server;
 }
 

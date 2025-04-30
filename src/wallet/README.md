@@ -1,25 +1,30 @@
-# Transaction Tracking System
+# Midnight MCP Wallet
 
-This module provides a transaction tracking system for the Midnight wallet to track the lifecycle of transactions from initiation to completion.
+The Midnight MCP Wallet module provides a secure interface to interact with the Midnight blockchain. It handles wallet creation, recovery, transaction management, and state synchronization with the blockchain.
 
-## Overview
+## Transaction Tracking
 
-Transactions go through the following states:
+One of the key features of the Midnight MCP Wallet is asynchronous transaction tracking, which allows you to:
 
-1. **INITIATED**: The transaction has been requested but not yet broadcast to the network.
-2. **SENT**: The transaction has been broadcast to the network with a `txIdentifier`.
-3. **COMPLETED**: The transaction appears in the wallet's transaction history, confirming it's been processed by the blockchain.
-4. **FAILED**: The transaction has failed due to an error.
+1. Initiate transactions without blocking the main application flow
+2. Track the status of transactions through their lifecycle
+3. Query for pending and completed transactions
+4. Verify transaction inclusion in the blockchain
 
-## Database
+### Transaction States
 
-The system uses SQLite to persist transaction state across application restarts. The database file is stored in the wallet backup folder with a name based on the wallet filename.
+Transactions go through several states during their lifecycle:
 
-## Usage
+- `INITIATED`: Transaction has been created but not yet broadcast to the network
+- `SENT`: Transaction has been broadcast with a transaction identifier
+- `COMPLETED`: Transaction has been confirmed and appears in transaction history
+- `FAILED`: Transaction failed for some reason (with an error message)
 
-### Initiating a Transaction
+### How to Use Transaction Tracking
 
-To initiate a transaction without waiting for it to be broadcast:
+#### Initiating a Transaction
+
+Instead of using `sendFunds()` which blocks until the transaction is broadcast, use `initiateSendFunds()` to start a transaction asynchronously:
 
 ```typescript
 const result = await walletManager.initiateSendFunds('recipient_address', '10.5');
@@ -28,44 +33,77 @@ console.log(`Transaction initiated with ID: ${result.id}`);
 
 The `initiateSendFunds` method returns immediately with a transaction ID, while the transaction processing continues asynchronously.
 
-### Checking Transaction Status
+#### Checking Transaction Status
 
-To check the status of a transaction:
-
-```typescript
-const status = walletManager.getTransactionStatus('transaction_id');
-console.log(`Transaction state: ${status.transaction.state}`);
-```
-
-### Getting All Transactions
-
-To get all transactions:
+You can check the status of a transaction using its ID:
 
 ```typescript
-const allTransactions = walletManager.getTransactions();
+const status = walletManager.getTransactionStatus(transactionId);
+
+if (status) {
+  console.log(`Transaction state: ${status.transaction.state}`);
+  
+  // If transaction is SENT and has blockchain status
+  if (status.transaction.state === TransactionState.SENT && status.blockchainStatus) {
+    console.log(`Transaction found on blockchain: ${status.blockchainStatus.exists}`);
+  }
+}
 ```
 
-To get transactions in a specific state:
+#### Getting Pending Transactions
 
-```typescript
-const pendingTransactions = walletManager.getTransactions(TransactionState.SENT);
-```
-
-### Getting Pending Transactions
-
-To get all transactions that are still pending (INITIATED or SENT):
+You can get all pending transactions (in INITIATED or SENT state):
 
 ```typescript
 const pendingTransactions = walletManager.getPendingTransactions();
 ```
 
-## Automatic Status Updates
+#### Getting All Transactions
 
-The system automatically checks for completed transactions at regular intervals. When a transaction is detected in the blockchain history, its state is updated to COMPLETED.
+You can get all transactions, optionally filtered by state:
 
-## Implementation Details
+```typescript
+// Get all transactions
+const allTransactions = walletManager.getTransactions();
 
-- The transaction database is automatically initialized when the WalletManager is created.
-- Transactions are automatically tracked through their lifecycle.
-- In case of wallet restart or application crash, the transaction tracking will resume from the persisted state.
-- The original `sendFunds` method is still available for backward compatibility and for cases where you want to wait for the transaction to be broadcast before continuing. 
+// Get only completed transactions
+const completedTransactions = walletManager.getTransactions(TransactionState.COMPLETED);
+```
+
+### Example
+
+See the `examples/transaction-tracking.ts` file for a complete example of how to use transaction tracking.
+
+### API Reference
+
+#### Transaction Methods
+
+- `initiateSendFunds(to: string, amount: string): Promise<InitiateTransactionResult>`
+  
+  Initiates a transaction without waiting for completion. Returns transaction ID and initial state.
+
+- `getTransactionStatus(id: string): TransactionStatusResult | null`
+  
+  Gets the status of a transaction, including blockchain verification if available.
+
+- `getTransactions(state?: TransactionState): TransactionRecord[]`
+  
+  Gets all transactions, optionally filtered by state.
+
+- `getPendingTransactions(): TransactionRecord[]`
+  
+  Gets all pending transactions (in INITIATED or SENT state).
+
+- The original `sendFunds` method is still available for backward compatibility and for cases where you want to wait for the transaction to be broadcast before continuing.
+
+## Wallet Management
+
+The wallet module also provides functions for wallet creation, recovery, and state management:
+
+- Automatic recovery from connection issues
+- Persistent wallet state storage
+- Balance tracking
+- Proof generation for transaction privacy
+- Integration with Midnight blockchain services
+
+For more details on wallet management, see the main documentation. 

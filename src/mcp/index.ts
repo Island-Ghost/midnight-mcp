@@ -6,7 +6,11 @@ import {
   WalletStatus, 
   WalletBalances, 
   SendFundsResult as WalletSendFundsResult,
-  TransactionVerificationResult  
+  TransactionVerificationResult,
+  InitiateTransactionResult,
+  TransactionStatusResult,
+  TransactionRecord,
+  TransactionState
 } from '../types/wallet.js';
 
 /**
@@ -182,7 +186,31 @@ export class MCPServer {
    * @returns Transaction hash, sync status, and amount sent
    * @throws MCPError if wallet is not ready, has insufficient funds, or transaction fails
    */
-  public async sendFunds(destinationAddress: string, amount: string): Promise<WalletSendFundsResult> {
+  public async sendFunds(destinationAddress: string, amount: string): Promise<InitiateTransactionResult> {
+    if (!this.isReady()) {
+      throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
+    }
+    
+    try {
+      // Use initiateSendFunds instead of sendFunds
+      const result = await this.wallet.initiateSendFunds(destinationAddress, amount);
+      
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to send funds', error);
+      throw new MCPError(MCPErrorType.TX_SUBMISSION_FAILED, 'Failed to submit transaction');
+    }
+  }
+  
+  /**
+   * For backward compatibility - this method waits for the transaction to be sent
+   * @param destinationAddress Address to send the funds to
+   * @param amount Amount of funds to send as a string (decimal value)
+   * @returns Transaction hash, sync status, and amount sent
+   * @throws MCPError if wallet is not ready, has insufficient funds, or transaction fails
+   * @deprecated Use sendFunds for non-blocking transactions
+   */
+  public async sendFundsAndWait(destinationAddress: string, amount: string): Promise<WalletSendFundsResult> {
     if (!this.isReady()) {
       throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
     }
@@ -198,6 +226,80 @@ export class MCPServer {
     } catch (error) {
       this.logger.error('Failed to send funds', error);
       throw new MCPError(MCPErrorType.TX_SUBMISSION_FAILED, 'Failed to submit transaction');
+    }
+  }
+  
+  /**
+   * Get the status of a transaction by its ID
+   * @param transactionId The ID of the transaction to check
+   * @returns The current status of the transaction
+   * @throws MCPError if transaction is not found or wallet is not ready
+   */
+  public getTransactionStatus(transactionId: string): TransactionStatusResult | null {
+    if (!this.isReady()) {
+      throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
+    }
+    
+    try {
+      const status = this.wallet.getTransactionStatus(transactionId);
+      
+      if (!status) {
+        throw new MCPError(MCPErrorType.TX_NOT_FOUND, `Transaction with ID ${transactionId} not found`);
+      }
+      
+      return status;
+    } catch (error) {
+      if (error instanceof MCPError) {
+        throw error;
+      }
+      this.logger.error(`Failed to get transaction status for ${transactionId}`, error);
+      throw new MCPError(
+        MCPErrorType.TX_NOT_FOUND,
+        `Failed to get transaction status: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+  
+  /**
+   * Get all transactions, optionally filtered by state
+   * @param state Optional state to filter transactions by
+   * @returns Array of transaction records
+   * @throws MCPError if wallet is not ready
+   */
+  public getTransactions(state?: TransactionState): TransactionRecord[] {
+    if (!this.isReady()) {
+      throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
+    }
+    
+    try {
+      return this.wallet.getTransactions(state);
+    } catch (error) {
+      this.logger.error('Failed to get transactions', error);
+      throw new MCPError(
+        MCPErrorType.WALLET_NOT_READY,
+        `Failed to get transactions: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+  
+  /**
+   * Get all pending transactions (INITIATED or SENT)
+   * @returns Array of pending transaction records
+   * @throws MCPError if wallet is not ready
+   */
+  public getPendingTransactions(): TransactionRecord[] {
+    if (!this.isReady()) {
+      throw new MCPError(MCPErrorType.WALLET_NOT_READY, 'Wallet is not ready');
+    }
+    
+    try {
+      return this.wallet.getPendingTransactions();
+    } catch (error) {
+      this.logger.error('Failed to get pending transactions', error);
+      throw new MCPError(
+        MCPErrorType.WALLET_NOT_READY,
+        `Failed to get pending transactions: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
   
