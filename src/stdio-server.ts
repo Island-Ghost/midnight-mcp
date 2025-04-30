@@ -8,28 +8,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
-
-// Define our tools with their schemas
-const ALL_TOOLS = [
-  {
-    name: "getTimestamp",
-    description: "Returns the current server timestamp",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: []
-    },
-  },
-  {
-    name: "getServerValue",
-    description: "Returns a predefined server value",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: []
-    },
-  }
-];
+import { 
+  MCPServer as MidnightMCPServer,
+  MCPError as MidnightMCPError
+} from './mcp/index.js';
+import { config } from './config.js';
+import { ALL_TOOLS, handleToolCall } from './tools.js';
 
 /**
  * Simple logging function
@@ -48,6 +32,26 @@ function formatError(error: unknown): string {
   }
   return String(error);
 }
+
+/**
+ * Initialize Midnight wallet instance
+ */
+const externalConfig = {
+  proofServer: config.proofServer,
+  indexer: config.indexer,
+  indexerWS: config.indexerWS,
+  node: config.node,
+  useExternalProofServer: config.useExternalProofServer,
+  networkId: config.networkId
+};
+
+// Initialize Midnight wallet instance
+const midnightServer = new MidnightMCPServer(
+  config.networkId,
+  config.seed,
+  config.walletFilename,
+  externalConfig
+);
 
 /**
  * Create and configure MCP server
@@ -84,6 +88,7 @@ export function createServer() {
     stop: async () => {
       try {
         await server.close();
+        await midnightServer.close();
         log("Server stopped");
       } catch (error) {
         log("Error stopping server:", error);
@@ -102,47 +107,18 @@ function handleError(context: string, error: unknown): never {
     throw error;
   }
 
+  // Handle Midnight MCP errors
+  if (error instanceof MidnightMCPError) {
+    throw new McpError(
+      ErrorCode.InternalError,
+      `Midnight MCP Error (${error.type}): ${error.message}`
+    );
+  }
+
   throw new McpError(
     ErrorCode.InternalError,
     `${context}: ${formatError(error)}`
   );
-}
-
-/**
- * Handle tool calls
- */
-async function handleToolCall(toolName: string, toolArgs: unknown) {
-  switch (toolName) {
-    case "getTimestamp":
-      const nowTimestamp = new Date().toISOString();
-      const result = {
-        "content": [
-          {
-            "type": "text",
-            "text": "The current timestamp is " + nowTimestamp,
-            "mimeType": "application/json"
-          }
-        ]
-      }
-      return result;
-    
-    case "getServerValue":
-      return {
-        "content": [
-          {
-            "type": "text",
-            "text": "The server value is 42",
-            "mimeType": "application/json"
-          }
-        ]
-      }
-    
-    default:
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        `Unknown tool: ${toolName}`
-      );
-  }
 }
 
 /**
@@ -156,7 +132,7 @@ function setupRequestHandlers(server: Server) {
       const toolArgs = request.params.arguments;
 
       log(`Tool call received: ${toolName}`);
-      return await handleToolCall(toolName, toolArgs);
+      return await handleToolCall(toolName, toolArgs, midnightServer, log);
     } catch (error) {
       return handleError("handling tool call", error);
     }
