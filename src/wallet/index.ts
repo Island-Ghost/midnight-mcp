@@ -612,16 +612,16 @@ export class WalletManager {
     ready: boolean; 
     recovering: boolean; 
     recoveryAttempts: number;
-    synced?: bigint;
-    total?: bigint; 
+    synced?: string;
+    total?: string; 
   } {
     if (withDetails) {
       return {
         ready: this.ready,
         recovering: this.isRecovering,
         recoveryAttempts: this.recoveryAttempts,
-        synced: this.syncedIndices,
-        total: this.totalIndices
+        synced: this.syncedIndices.toString(),
+        total: this.totalIndices.toString()
       };
     }
     
@@ -713,8 +713,8 @@ export class WalletManager {
       return {
         txIdentifier: submittedTransaction,
         syncStatus: {
-          syncedIndices: this.syncedIndices,
-          totalIndices: this.totalIndices,
+          syncedIndices: this.syncedIndices.toString(),
+          totalIndices: this.totalIndices.toString(),
           isFullySynced
         },
         amount // Return the original dust string input
@@ -842,8 +842,8 @@ export class WalletManager {
         return {
           exists: false, 
           syncStatus: {
-            syncedIndices: this.syncedIndices, 
-            totalIndices: this.totalIndices,
+            syncedIndices: this.syncedIndices.toString(), 
+            totalIndices: this.totalIndices.toString(),
             isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
           }
         };
@@ -857,8 +857,8 @@ export class WalletManager {
       return {
         exists,
         syncStatus: {
-          syncedIndices: this.syncedIndices,
-          totalIndices: this.totalIndices,
+          syncedIndices: this.syncedIndices.toString(),
+          totalIndices: this.totalIndices.toString(),
           isFullySynced: this.totalIndices > 0n && this.syncedIndices === this.totalIndices
         }
       };
@@ -1069,9 +1069,17 @@ export class WalletManager {
       if (transaction.txIdentifier && transaction.state === TransactionState.SENT) {
         const blockchainStatus = this.hasReceivedTransactionByIdentifier(transaction.txIdentifier);
         
+        // Convert BigInt values to strings for safe JSON serialization
         return {
           transaction,
-          blockchainStatus
+          blockchainStatus: {
+            exists: blockchainStatus.exists,
+            syncStatus: {
+              syncedIndices: blockchainStatus.syncStatus.syncedIndices.toString(),
+              totalIndices: blockchainStatus.syncStatus.totalIndices.toString(),
+              isFullySynced: blockchainStatus.syncStatus.isFullySynced
+            }
+          }
         };
       }
       

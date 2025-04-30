@@ -42,8 +42,8 @@ export interface WalletStatus {
 export interface TransactionVerificationResult {
   exists: boolean;
   syncStatus: {
-    syncedIndices: bigint;
-    totalIndices: bigint;
+    syncedIndices: string;
+    totalIndices: string;
     isFullySynced: boolean;
   }
 }
@@ -54,8 +54,8 @@ export interface TransactionVerificationResult {
 export interface SendFundsResult {
   txIdentifier: string;
   syncStatus: {
-    syncedIndices: bigint;
-    totalIndices: bigint;
+    syncedIndices: string;
+    totalIndices: string;
     isFullySynced: boolean;
   }
   amount: string; // Amount sent in dust format
@@ -105,8 +105,8 @@ export interface TransactionStatusResult {
   blockchainStatus?: {
     exists: boolean;
     syncStatus: {
-      syncedIndices: bigint;
-      totalIndices: bigint;
+      syncedIndices: string;
+      totalIndices: string;
       isFullySynced: boolean;
     }
   }
