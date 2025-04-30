@@ -14,12 +14,20 @@ const ALL_TOOLS = [
   {
     name: "getTimestamp",
     description: "Returns the current server timestamp",
-    parameters: {},
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: []
+    },
   },
   {
     name: "getServerValue",
     description: "Returns a predefined server value",
-    parameters: {},
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: []
+    },
   }
 ];
 
@@ -106,14 +114,28 @@ function handleError(context: string, error: unknown): never {
 async function handleToolCall(toolName: string, toolArgs: unknown) {
   switch (toolName) {
     case "getTimestamp":
-      return {
-        timestamp: new Date().toISOString()
-      };
+      const nowTimestamp = new Date().toISOString();
+      const result = {
+        "content": [
+          {
+            "type": "text",
+            "text": "The current timestamp is " + nowTimestamp,
+            "mimeType": "application/json"
+          }
+        ]
+      }
+      return result;
     
     case "getServerValue":
       return {
-        serverValue: "midnight"
-      };
+        "content": [
+          {
+            "type": "text",
+            "text": "The server value is 42",
+            "mimeType": "application/json"
+          }
+        ]
+      }
     
     default:
       throw new McpError(
